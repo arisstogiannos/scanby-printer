@@ -1,0 +1,67 @@
+name: Build installers
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    concurrency:
+      group: build-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS (.dmg)
+            builder_flag: --mac
+          - os: windows-latest
+            name: Windows (.exe)
+            builder_flag: --win
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+      EB_PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build app
+        run: pnpm build
+
+      - name: Package installer
+        run: npx electron-builder ${{ matrix.builder_flag }} --publish ${{ env.EB_PUBLISH }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanby-print-service-${{ matrix.os }}
+          path: |
+            release/*
+          if-no-files-found: error
+          retention-days: 30

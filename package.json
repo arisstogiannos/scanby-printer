@@ -1,0 +1,97 @@
+{
+  "name": "scanby-print-service",
+  "version": "1.0.0",
+  "description": "Scanby kitchen ticket print service for network thermal printers",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "electron-vite build && electron-builder",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "smoke-print": "tsx scripts/smoke-print.ts",
+    "test:core": "tsx scripts/test-core.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.86.0",
+    "auto-launch": "^5.0.6",
+    "electron-log": "^5.4.0",
+    "electron-updater": "^6.6.2",
+    "express": "^5.1.0",
+    "node-thermal-printer": "^4.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/auto-launch": "^5.0.5",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "electron": "^36.3.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^3.1.0",
+    "tailwindcss": "^4.1.8",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  },
+  "build": {
+    "appId": "cloud.scanby.print-service",
+    "productName": "Scanby Print Service",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "icon": "icon.png",
+    "files": [
+      "out/**/*",
+      "resources/**/*"
+    ],
+    "protocols": [
+      {
+        "name": "Scanby Print Service",
+        "schemes": [
+          "scanby"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "scanby",
+      "repo": "scanby-printer"
+    }
+  }
+}
