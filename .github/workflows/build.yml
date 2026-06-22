@@ -60,7 +60,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: scanby-print-service-${{ matrix.os }}
+          name: Scanby-Printer-${{ matrix.os }}
           path: |
             release/*
           if-no-files-found: error

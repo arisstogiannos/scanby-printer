@@ -1,6 +1,6 @@
 {
   "name": "scanby-print-service",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Scanby kitchen ticket print service for network thermal printers",
   "main": "./out/main/index.js",
   "type": "module",
@@ -54,6 +54,7 @@
   "build": {
     "appId": "cloud.scanby.print-service",
     "productName": "Scanby Print Service",
+    "artifactName": "Scanby-Printer.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "resources"
