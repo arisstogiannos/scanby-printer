@@ -15,7 +15,7 @@ pnpm dev
 
 Actions → *Build installers* → *Run workflow*
 
-Download `.dmg` / `.exe` from the workflow run **Artifacts**. Does not publish — installed apps will not see an update.
+Download `.dmg` / `.exe` / `.appx` from the workflow run **Artifacts**. Does not publish — installed apps will not see an update.
 
 ### Release (auto-update feed)
 
@@ -34,6 +34,30 @@ Users get an OS notification when an update is ready; they confirm install/resta
 
 **Cost:** free for **public** repos. Private free plan: ~2000 min/month shared; macOS minutes count 10× (a mac build uses ~50–100 billed minutes).
 
+### Windows distribution (GitHub vs Microsoft Store)
+
+CI builds two Windows packages:
+
+| Artifact | Channel | Auto-update |
+|----------|---------|-------------|
+| `Scanby-Printer.exe` (NSIS) | [GitHub Releases](https://github.com/arisstogiannos/scanby-printer/releases) — direct download | `electron-updater` via `latest.yml` |
+| `Scanby-Printer.appx` (AppX/MSIX) | Microsoft Store — upload in [Partner Center](https://partner.microsoft.com/dashboard) | Windows Store |
+
+**GitHub `.exe`:** unsigned today → SmartScreen shows “Unknown publisher”. Users click **More info → Run anyway**, or you add Authenticode signing later.
+
+**Store `.appx`:** Microsoft re-signs on submission — no SmartScreen warning for Store installs. Store builds do **not** use `electron-updater`; updates go through the Store.
+
+Before first Store submission, register the app in Partner Center and replace these placeholders in `package.json` → `build.appx` with the exact Partner Center values:
+
+- `identityName`
+- `publisher` (certificate Subject, e.g. `CN=Scanby, O=Scanby, C=US`)
+
+Build Store package only locally:
+
+```powershell
+pnpm dist:win:store
+```
+
 ## Scripts
 
 | Command | Description |
@@ -42,7 +66,8 @@ Users get an OS notification when an update is ready; they confirm install/resta
 | `pnpm build` | Build app to `out/` |
 | `pnpm dist` | Build installers to `release/` |
 | `pnpm dist:mac` | macOS `.dmg` (requires macOS or CI) |
-| `pnpm dist:win` | Windows `.exe` |
+| `pnpm dist:win` | Windows `.exe` + `.appx` |
+| `pnpm dist:win:store` | Windows `.appx` only (Store upload) |
 | `pnpm typecheck` | TypeScript check |
 | `pnpm check:fix` | Biome lint + format |
 | `pnpm smoke-print <ip>` | Print sample ticket to printer IP |
@@ -61,12 +86,14 @@ Used by Scanby dashboard to pair, poll status, reprint orders, and unpair. App m
 | POST | `/pair` | Origin | Save venue config, start Supabase listener |
 | POST | `/print` | Origin | Queue manual reprint |
 | POST | `/unpair` | Origin | Clear config, stop listener |
+| POST | `/printer/scan` | Origin | Scan local subnet for ESC/POS printers |
+| POST | `/printer/connect` | Origin | Save selected printer IP and mark setup complete |
 
 `OPTIONS` preflight supported for CORS.
 
 ### Auth & CORS
 
-Write endpoints (`POST /pair`, `/print`, `/unpair`) require one of:
+Write endpoints (`POST /pair`, `/print`, `/unpair`, `/printer/scan`, `/printer/connect`) require one of:
 
 - `Origin` header in whitelist (browser from dashboard)
 - No `Origin` + request to `127.0.0.1` or `localhost` (local scripts)
@@ -185,6 +212,57 @@ No body. Clears saved config and stops Supabase listener.
 ```
 
 **Errors:** `403` forbidden origin.
+
+### `POST /printer/scan`
+
+Scans the local /24 subnet for devices accepting TCP on port 9100 (ESC/POS). No request body.
+
+**Headers:** `Origin` (see above)
+
+**Response `200`:**
+
+```json
+{
+  "printers": ["192.168.1.100", "192.168.1.105"],
+  "subnet": "192.168.1"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `printers` | `string[]` | Reachable printer IPs, sorted |
+| `subnet` | `string \| null` | Scanned subnet base (e.g. `192.168.1`) |
+
+While scanning, `GET /status` reports `printer: "scanning"`.
+
+**Errors:** `403` forbidden origin, `500` scan failed.
+
+### `POST /printer/connect`
+
+Probes the selected IP, saves it as the active printer, and completes setup. Requires prior pairing via `POST /pair`.
+
+**Headers:** `Content-Type: application/json`, `Origin` (see above)
+
+**Body:**
+
+```json
+{
+  "ip": "192.168.1.100"
+}
+```
+
+Alias accepted: `printerIp`.
+
+**Response `200`:**
+
+```json
+{
+  "ok": true,
+  "printerIp": "192.168.1.100"
+}
+```
+
+**Errors:** `400` invalid payload, `403` forbidden origin, `409` not paired, `422` printer unreachable, `500` connect failed.
 
 ### Examples
 

@@ -1,6 +1,6 @@
 {
   "name": "scanby-print-service",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Scanby kitchen ticket print service for network thermal printers",
   "main": "./out/main/index.js",
   "type": "module",
@@ -17,6 +17,7 @@
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
+    "dist:win:store": "electron-vite build && electron-builder --win appx",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "typecheck": "tsc --noEmit",
     "check": "biome check .",
@@ -74,7 +75,24 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "appx"
+      ]
+    },
+    "appx": {
+      "applicationId": "ScanbyPrintService",
+      "identityName": "Scanby.ScanbyPrintService",
+      "publisher": "CN=unknown",
+      "publisherDisplayName": "Scanby",
+      "displayName": "Scanby Print Service",
+      "languages": [
+        "en-US"
+      ],
+      "setBuildNumber": true,
+      "capabilities": [
+        "runFullTrust",
+        "internetClient",
+        "privateNetworkClientServer"
       ]
     },
     "mac": {

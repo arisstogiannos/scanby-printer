@@ -58,7 +58,7 @@ if (!gotLock) {
 
       showWindowForStartup();
 
-      if (!process.env.ELECTRON_RENDERER_URL) {
+      if (!process.env.ELECTRON_RENDERER_URL && !process.windowsStore) {
         autoUpdater.checkForUpdatesAndNotify();
       }
 

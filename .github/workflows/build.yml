@@ -24,7 +24,7 @@ jobs:
             name: macOS (.dmg)
             builder_flag: --mac
           - os: windows-latest
-            name: Windows (.exe)
+            name: Windows (.exe + .appx)
             builder_flag: --win
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
