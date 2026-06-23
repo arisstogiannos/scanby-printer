@@ -3,6 +3,7 @@ import { buildTicketLines } from "../src/services/printer-service";
 import { PRINT_DEDUPE_MS } from "../src/shared/constants";
 import { normalizePairPayload } from "../src/shared/pair-payload";
 import { normalizePrintOrder } from "../src/shared/print-payload";
+import { normalizePrinterConnectPayload } from "../src/shared/printer-connect-payload";
 
 function testBuildTicketLines(): void {
   const order = {
@@ -66,8 +67,23 @@ function testConstants(): void {
   assert.equal(PRINT_DEDUPE_MS, 30_000);
 }
 
+function testPrinterConnectPayload(): void {
+  const payload = normalizePrinterConnectPayload({ ip: "192.168.1.50" });
+  assert.ok(payload);
+  assert.equal(payload?.ip, "192.168.1.50");
+
+  const alias = normalizePrinterConnectPayload({ printerIp: " 10.0.0.2 " });
+  assert.ok(alias);
+  assert.equal(alias?.ip, "10.0.0.2");
+
+  assert.equal(normalizePrinterConnectPayload({}), null);
+  assert.equal(normalizePrinterConnectPayload({ ip: "not-an-ip" }), null);
+  assert.equal(normalizePrinterConnectPayload({ ip: "256.1.1.1" }), null);
+}
+
 testBuildTicketLines();
 testDashboardPairPayload();
 testDashboardPrintPayload();
+testPrinterConnectPayload();
 testConstants();
 console.log("Core tests passed");

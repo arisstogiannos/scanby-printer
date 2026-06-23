@@ -2,16 +2,11 @@ import { ipcMain } from "electron";
 import log from "electron-log";
 import { hideSetupWindow, showSetupWindow } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
-import { enableAutoLaunch } from "@/services/auto-launch";
-import {
-  getConfig,
-  getSafeConfigSummary,
-  isConfigured,
-  isPaired,
-  savePrinterIp,
-} from "@/services/config-store";
+import { getConfig, getSafeConfigSummary, isConfigured, isPaired } from "@/services/config-store";
 import { getPrintHistory, recordPrint } from "@/services/print-history-store";
-import { probePrinter, scanForPrinters } from "@/services/printer-discovery";
+import { connectToPrinter } from "@/services/printer-connection";
+import { probePrinter } from "@/services/printer-discovery";
+import { runPrinterScan } from "@/services/printer-scan-service";
 import { testPrint } from "@/services/printer-service";
 import { unpairApp } from "@/services/unpair";
 
@@ -33,17 +28,9 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle("printer:scan", async () => {
-    appState.setPrinterStatus("scanning");
     try {
-      const printers = await scanForPrinters();
-      if (printers.length > 0) {
-        appState.setPrinterStatus("online");
-      } else {
-        appState.setPrinterStatus("offline");
-      }
-      return { printers };
+      return await runPrinterScan();
     } catch (error) {
-      appState.setPrinterStatus("offline");
       log.error("Printer scan failed", error);
       throw error;
     }
@@ -101,17 +88,7 @@ export function registerIpcHandlers(): void {
     if (typeof ip !== "string" || !ip.trim()) {
       throw new Error("Invalid IP");
     }
-    const printerIp = ip.trim();
-    const reachable = await probePrinter(printerIp);
-    if (!reachable) {
-      throw new Error("Printer not reachable at this IP");
-    }
-
-    savePrinterIp(printerIp);
-    appState.setPrinterIp(printerIp);
-    appState.setPrinterStatus("online");
-    appState.setSetupComplete();
-    await enableAutoLaunch();
+    await connectToPrinter(ip);
     hideSetupWindow();
     return { ok: true };
   });

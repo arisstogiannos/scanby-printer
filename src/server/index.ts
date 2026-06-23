@@ -4,6 +4,8 @@ import express from "express";
 import { corsMiddleware, originGuard } from "@/server/origin-guard";
 import { pairHandler } from "@/server/routes/pair";
 import { printHandler } from "@/server/routes/print";
+import { printerConnectHandler } from "@/server/routes/printer-connect";
+import { printerScanHandler } from "@/server/routes/printer-scan";
 import { statusHandler } from "@/server/routes/status";
 import { unpairHandler } from "@/server/routes/unpair";
 import { LOCAL_SERVER_HOST, LOCAL_SERVER_PORT } from "@/shared/constants";
@@ -23,6 +25,12 @@ export function createLocalServer(): express.Express {
   app.post("/print", printHandler);
   app.post("/unpair", (req, res) => {
     void unpairHandler(req, res);
+  });
+  app.post("/printer/scan", (req, res) => {
+    void printerScanHandler(req, res);
+  });
+  app.post("/printer/connect", (req, res) => {
+    void printerConnectHandler(req, res);
   });
 
   return app;
