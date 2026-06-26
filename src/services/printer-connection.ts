@@ -1,6 +1,6 @@
 import { appState } from "@/services/app-state";
 import { enableAutoLaunch } from "@/services/auto-launch";
-import { isPaired, savePrinterIp } from "@/services/config-store";
+import { getConfig, isPaired, savePrinterIp } from "@/services/config-store";
 import { probePrinter } from "@/services/printer-discovery";
 
 export type PrinterConnectErrorCode = "not_paired" | "unreachable" | "invalid_ip";
@@ -37,4 +37,20 @@ export async function connectToPrinter(ip: string): Promise<{ ip: string }> {
   await enableAutoLaunch();
 
   return { ip: printerIp };
+}
+
+export async function reconnectPrinter(): Promise<{ online: boolean; ip: string | null }> {
+  if (!isPaired()) {
+    return { online: false, ip: null };
+  }
+
+  const printerIp = appState.getSnapshot().printerIp ?? getConfig()?.printerIp ?? null;
+  if (!printerIp) {
+    appState.setPrinterStatus("offline");
+    return { online: false, ip: null };
+  }
+
+  const reachable = await probePrinter(printerIp);
+  appState.setPrinterStatus(reachable ? "online" : "offline");
+  return { online: reachable, ip: printerIp };
 }

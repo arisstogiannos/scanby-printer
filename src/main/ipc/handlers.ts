@@ -4,7 +4,7 @@ import { hideSetupWindow, showSetupWindow } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
 import { getConfig, getSafeConfigSummary, isConfigured, isPaired } from "@/services/config-store";
 import { getPrintHistory, recordPrint } from "@/services/print-history-store";
-import { connectToPrinter } from "@/services/printer-connection";
+import { connectToPrinter, reconnectPrinter } from "@/services/printer-connection";
 import { probePrinter } from "@/services/printer-discovery";
 import { runPrinterScan } from "@/services/printer-scan-service";
 import { testPrint } from "@/services/printer-service";
@@ -91,6 +91,28 @@ export function registerIpcHandlers(): void {
     await connectToPrinter(ip);
     hideSetupWindow();
     return { ok: true };
+  });
+
+  ipcMain.handle("printer:switch-ip", async (_event, ip: string) => {
+    if (typeof ip !== "string" || !ip.trim()) {
+      throw new Error("Invalid IP");
+    }
+    try {
+      await connectToPrinter(ip.trim());
+      return { ok: true };
+    } catch (error) {
+      log.error("Printer switch failed", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("printer:reconnect", async () => {
+    try {
+      return await reconnectPrinter();
+    } catch (error) {
+      log.error("Printer reconnect failed", error);
+      throw error;
+    }
   });
 
   ipcMain.handle("app:open-settings", () => {

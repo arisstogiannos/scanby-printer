@@ -2,6 +2,7 @@ import appIcon from "@resources/icon.png";
 import { useCallback, useEffect, useState } from "react";
 import type { RendererAppState } from "@/preload/index";
 import { PrintHistory } from "./components/print-history";
+import { PrinterActions } from "./components/printer-actions";
 import { PrinterSetup } from "./components/printer-setup";
 import { VenueStatus } from "./components/venue-status";
 import { WaitingPair } from "./components/waiting-pair";
@@ -91,6 +92,11 @@ export function App() {
             businessName={state.businessName ?? "Your venue"}
             printerIp={state.printerIp}
             printerStatus={state.printerStatus}
+          />
+          <PrinterActions
+            printerIp={state.printerIp}
+            printerStatus={state.printerStatus}
+            onUpdated={refresh}
           />
         </section>
       ) : null}

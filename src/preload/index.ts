@@ -20,6 +20,10 @@ const api = {
   probePrinter: (ip: string): Promise<boolean> => ipcRenderer.invoke("printer:probe", ip),
   testPrint: (ip: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("printer:test", ip),
   savePrinter: (ip: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("printer:save", ip),
+  switchPrinterIp: (ip: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("printer:switch-ip", ip),
+  reconnectPrinter: (): Promise<{ online: boolean; ip: string | null }> =>
+    ipcRenderer.invoke("printer:reconnect"),
   unpair: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("app:unpair"),
 };
 
