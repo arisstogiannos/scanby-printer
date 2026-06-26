@@ -3,11 +3,15 @@ import { app } from "electron";
 import log from "electron-log";
 import { startLocalServer, stopLocalServer } from "@/server/index";
 import { appState } from "@/services/app-state";
-import { enableAutoLaunch, initAutoLaunch } from "@/services/auto-launch";
+import { initAutoLaunch, syncAutoLaunch } from "@/services/auto-launch";
 import { getConfig, initConfigStore, isConfigured, isPaired } from "@/services/config-store";
 import { initPrintHistoryStore } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
 import { probePrinter } from "@/services/printer-discovery";
+import {
+  shutdownPrinterReconnectMonitor,
+  startPrinterReconnectMonitor,
+} from "@/services/printer-reconnect";
 import { restartSupabaseListener, shutdownSupabaseListener } from "@/services/supabase-listener";
 
 export function configureLogging(): void {
@@ -20,9 +24,10 @@ export async function bootstrapServices(): Promise<void> {
   const userDataPath = app.getPath("userData");
   initConfigStore(userDataPath);
   initPrintHistoryStore(userDataPath);
-  initAutoLaunch("Scanby Print Service");
+  initAutoLaunch();
 
   await startLocalServer();
+  await syncAutoLaunch(isConfigured());
 
   const config = getConfig();
   log.info("config", config);
@@ -37,14 +42,16 @@ export async function bootstrapServices(): Promise<void> {
     }
     if (isConfigured()) {
       appState.setSetupComplete();
-      await enableAutoLaunch();
     }
     log.info("starting supabase listener");
     await restartSupabaseListener();
   }
+
+  startPrinterReconnectMonitor();
 }
 
 export async function shutdownServices(): Promise<void> {
+  shutdownPrinterReconnectMonitor();
   await printQueue.drain();
   await shutdownSupabaseListener();
   await stopLocalServer();

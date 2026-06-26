@@ -127,10 +127,7 @@ export async function printOrder(
 
   appState.setPrinterStatus("printing");
   try {
-    const success = await printer.execute();
-    if (!success) {
-      throw new Error("Printer execute returned false");
-    }
+    await printer.execute();
     appState.setPrinterStatus("online");
     log.info(`Printed ${event} for order ${order.id} (#${order.number})`);
   } catch (error) {
@@ -154,10 +151,7 @@ export async function testPrint(printerIp: string): Promise<void> {
 
   appState.setPrinterStatus("printing");
   try {
-    const success = await printer.execute();
-    if (!success) {
-      throw new Error("Test print execute returned false");
-    }
+    await printer.execute();
     appState.setPrinterStatus("online");
     log.info(`Test print succeeded on ${printerIp}`);
   } catch (error) {

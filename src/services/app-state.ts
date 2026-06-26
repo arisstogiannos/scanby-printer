@@ -40,6 +40,9 @@ class AppState extends EventEmitter<AppStateEvents> {
   }
 
   setPrinterStatus(status: PrinterStatus): void {
+    if (this.printerStatus === status) {
+      return;
+    }
     this.printerStatus = status;
     this.emitChange();
   }

@@ -39,7 +39,21 @@ export async function connectToPrinter(ip: string): Promise<{ ip: string }> {
   return { ip: printerIp };
 }
 
+let reconnectInFlight: Promise<{ online: boolean; ip: string | null }> | null = null;
+
 export async function reconnectPrinter(): Promise<{ online: boolean; ip: string | null }> {
+  if (reconnectInFlight) {
+    return reconnectInFlight;
+  }
+
+  reconnectInFlight = probeSavedPrinter().finally(() => {
+    reconnectInFlight = null;
+  });
+
+  return reconnectInFlight;
+}
+
+async function probeSavedPrinter(): Promise<{ online: boolean; ip: string | null }> {
   if (!isPaired()) {
     return { online: false, ip: null };
   }
