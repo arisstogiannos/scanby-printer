@@ -3,7 +3,7 @@ import { app } from "electron";
 import log from "electron-log";
 import { startLocalServer, stopLocalServer } from "@/server/index";
 import { appState } from "@/services/app-state";
-import { initAutoLaunch } from "@/services/auto-launch";
+import { enableAutoLaunch, initAutoLaunch } from "@/services/auto-launch";
 import { getConfig, initConfigStore, isConfigured, isPaired } from "@/services/config-store";
 import { initPrintHistoryStore } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
@@ -37,6 +37,7 @@ export async function bootstrapServices(): Promise<void> {
     }
     if (isConfigured()) {
       appState.setSetupComplete();
+      await enableAutoLaunch();
     }
     log.info("starting supabase listener");
     await restartSupabaseListener();

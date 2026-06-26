@@ -82,8 +82,13 @@ export function hideSetupWindow(): void {
   }
 }
 
+function wasLaunchedHidden(): boolean {
+  return process.argv.includes("--hidden");
+}
+
 export function showWindowForStartup(): void {
-  if (!isConfigured()) {
-    showSetupWindow();
+  if (wasLaunchedHidden() || isConfigured()) {
+    return;
   }
+  showSetupWindow();
 }

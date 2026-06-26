@@ -1,9 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import log from "electron-log";
-import electronUpdater from "electron-updater";
 
-const { autoUpdater } = electronUpdater;
-
+import { initAutoUpdater } from "@/main/auto-updater";
 import { registerIpcHandlers } from "@/main/ipc/handlers";
 import {
   bootstrapServices,
@@ -15,6 +13,7 @@ import {
 import { initTray } from "@/main/tray";
 import { showSetupWindow, showWindowForStartup } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
+import { isConfigured } from "@/services/config-store";
 
 const gotLock = app.requestSingleInstanceLock();
 
@@ -29,9 +28,12 @@ if (!gotLock) {
     const protocolUrl = argv.find((arg) => arg.startsWith("scanby://"));
     if (protocolUrl) {
       handleProtocolOpen(protocolUrl, () => showSetupWindow());
-    } else {
-      showSetupWindow();
+      return;
     }
+    if (argv.includes("--hidden") || isConfigured()) {
+      return;
+    }
+    showSetupWindow();
   });
 
   app.on("open-url", (event, url) => {
@@ -58,9 +60,7 @@ if (!gotLock) {
 
       showWindowForStartup();
 
-      if (!process.env.ELECTRON_RENDERER_URL && !process.windowsStore) {
-        autoUpdater.checkForUpdatesAndNotify();
-      }
+      initAutoUpdater();
 
       log.info("Scanby Print Service ready");
     } catch (error) {
@@ -78,7 +78,7 @@ if (!gotLock) {
   });
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (BrowserWindow.getAllWindows().length === 0 && !isConfigured()) {
       showSetupWindow();
     }
   });

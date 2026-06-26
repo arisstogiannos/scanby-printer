@@ -1,4 +1,5 @@
 import AutoLaunch from "auto-launch";
+import { app } from "electron";
 import log from "electron-log";
 
 let autoLauncher: AutoLaunch | null = null;
@@ -6,6 +7,7 @@ let autoLauncher: AutoLaunch | null = null;
 export function initAutoLaunch(appName: string): void {
   autoLauncher = new AutoLaunch({
     name: appName,
+    path: app.getPath("exe"),
     isHidden: true,
   });
 }
@@ -15,13 +17,22 @@ export async function enableAutoLaunch(): Promise<void> {
     return;
   }
   try {
-    const enabled = await autoLauncher.isEnabled();
-    if (!enabled) {
-      await autoLauncher.enable();
-      log.info("Auto-launch enabled");
-    }
+    await autoLauncher.enable();
+    log.info("Auto-launch enabled");
   } catch (error) {
     log.error("Failed to enable auto-launch", error);
+  }
+}
+
+export async function isAutoLaunchEnabled(): Promise<boolean> {
+  if (!autoLauncher) {
+    return false;
+  }
+  try {
+    return await autoLauncher.isEnabled();
+  } catch (error) {
+    log.error("Failed to read auto-launch status", error);
+    return false;
   }
 }
 
