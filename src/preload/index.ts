@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { AppStateSnapshot, PrintHistoryEntry } from "@/shared/types";
 
 export type RendererAppState = AppStateSnapshot & {
+  version: string;
   setupStage: "waiting-pair" | "printer-setup" | "complete";
   paired: boolean;
   configured: boolean;

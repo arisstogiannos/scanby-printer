@@ -37,6 +37,14 @@ export function initAutoUpdater(): void {
     log.info("Update downloaded", info.version);
   });
 
+  autoUpdater.on("download-progress", (progress) => {
+    log.info("Update download progress", {
+      percent: Math.round(progress.percent),
+      transferred: Math.round(progress.transferred / 1024),
+      total: Math.round(progress.total / 1024),
+    });
+  });
+
   void autoUpdater
     .checkForUpdatesAndNotify()
     .then((result) => {

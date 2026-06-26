@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { app, ipcMain } from "electron";
 import log from "electron-log";
 import { hideSetupWindow, showSetupWindow } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
@@ -15,6 +15,7 @@ export function registerIpcHandlers(): void {
     const config = getConfig();
     return {
       ...appState.getSnapshot(),
+      version: app.getVersion(),
       setupStage: appState.getSetupStage(),
       paired: isPaired(),
       configured: isConfigured(),

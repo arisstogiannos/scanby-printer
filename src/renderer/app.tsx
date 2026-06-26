@@ -102,6 +102,8 @@ export function App() {
       ) : null}
 
       {state.paired ? <PrintHistory entries={state.printHistory} /> : null}
+
+      <footer className="mt-auto pt-2 text-center text-xs text-zinc-600">v{state.version}</footer>
     </main>
   );
 }
