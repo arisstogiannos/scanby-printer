@@ -1,7 +1,14 @@
 import { appState } from "@/services/app-state";
 import { enableAutoLaunch } from "@/services/auto-launch";
 import { getConfig, isPaired, savePrinterIp } from "@/services/config-store";
-import { probePrinter } from "@/services/printer-discovery";
+import {
+  activityChangedSince,
+  captureActivityGeneration,
+  isInPostPrintGrace,
+  shouldBlockProbeStatusUpdate,
+  statusLooksOnline,
+} from "@/services/printer-activity";
+import { probeSavedPrinterReachable } from "@/services/printer-discovery";
 
 export type PrinterConnectErrorCode = "not_paired" | "unreachable" | "invalid_ip";
 
@@ -25,7 +32,7 @@ export async function connectToPrinter(ip: string): Promise<{ ip: string }> {
     throw new PrinterConnectError("not_paired", "App must be paired before connecting a printer");
   }
 
-  const reachable = await probePrinter(printerIp);
+  const reachable = await probeSavedPrinterReachable(printerIp);
   if (!reachable) {
     throw new PrinterConnectError("unreachable", "Printer not reachable at this IP");
   }
@@ -53,6 +60,31 @@ export async function reconnectPrinter(): Promise<{ online: boolean; ip: string 
   return reconnectInFlight;
 }
 
+export async function syncSavedPrinterStatus(
+  printerIp: string,
+): Promise<{ online: boolean; ip: string }> {
+  const currentStatus = appState.getSnapshot().printerStatus;
+
+  if (shouldBlockProbeStatusUpdate(currentStatus)) {
+    return { online: statusLooksOnline(currentStatus), ip: printerIp };
+  }
+
+  const generationAtStart = captureActivityGeneration();
+  const reachable = await probeSavedPrinterReachable(printerIp);
+  const statusAfterProbe = appState.getSnapshot().printerStatus;
+
+  if (activityChangedSince(generationAtStart) || shouldBlockProbeStatusUpdate(statusAfterProbe)) {
+    return { online: statusLooksOnline(statusAfterProbe), ip: printerIp };
+  }
+
+  if (!reachable && isInPostPrintGrace()) {
+    return { online: statusLooksOnline(statusAfterProbe), ip: printerIp };
+  }
+
+  appState.setPrinterStatus(reachable ? "online" : "offline");
+  return { online: reachable, ip: printerIp };
+}
+
 async function probeSavedPrinter(): Promise<{ online: boolean; ip: string | null }> {
   if (!isPaired()) {
     return { online: false, ip: null };
@@ -64,7 +96,6 @@ async function probeSavedPrinter(): Promise<{ online: boolean; ip: string | null
     return { online: false, ip: null };
   }
 
-  const reachable = await probePrinter(printerIp);
-  appState.setPrinterStatus(reachable ? "online" : "offline");
-  return { online: reachable, ip: printerIp };
+  const result = await syncSavedPrinterStatus(printerIp);
+  return { online: result.online, ip: result.ip };
 }

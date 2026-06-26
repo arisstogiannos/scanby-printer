@@ -13,7 +13,6 @@ import {
 import { initTray } from "@/main/tray";
 import { showSetupWindow, showWindowForStartup } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
-import { isConfigured } from "@/services/config-store";
 
 const gotLock = app.requestSingleInstanceLock();
 
@@ -30,7 +29,7 @@ if (!gotLock) {
       handleProtocolOpen(protocolUrl, () => showSetupWindow());
       return;
     }
-    if (argv.includes("--hidden") || isConfigured()) {
+    if (argv.includes("--hidden")) {
       return;
     }
     showSetupWindow();
@@ -78,7 +77,7 @@ if (!gotLock) {
   });
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0 && !isConfigured()) {
+    if (BrowserWindow.getAllWindows().length === 0) {
       showSetupWindow();
     }
   });

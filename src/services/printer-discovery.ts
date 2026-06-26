@@ -1,6 +1,11 @@
 import { connect, type Socket } from "node:net";
 import { networkInterfaces } from "node:os";
-import { PRINTER_PORT, SCAN_CONCURRENCY, SCAN_TIMEOUT_MS } from "@/shared/constants";
+import {
+  PRINTER_PORT,
+  PRINTER_PROBE_TIMEOUT_MS,
+  SCAN_CONCURRENCY,
+  SCAN_TIMEOUT_MS,
+} from "@/shared/constants";
 
 export function getLocalSubnet(): string | null {
   const interfaces = networkInterfaces();
@@ -41,8 +46,12 @@ function probeHost(ip: string, port: number, timeoutMs: number): Promise<boolean
   });
 }
 
-export async function probePrinter(ip: string): Promise<boolean> {
-  return probeHost(ip, PRINTER_PORT, SCAN_TIMEOUT_MS);
+export async function probePrinter(ip: string, timeoutMs = SCAN_TIMEOUT_MS): Promise<boolean> {
+  return probeHost(ip, PRINTER_PORT, timeoutMs);
+}
+
+export async function probeSavedPrinterReachable(ip: string): Promise<boolean> {
+  return probePrinter(ip, PRINTER_PROBE_TIMEOUT_MS);
 }
 
 async function runWithConcurrency<T>(

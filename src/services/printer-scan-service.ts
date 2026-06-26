@@ -1,7 +1,8 @@
 import log from "electron-log";
 import { appState } from "@/services/app-state";
 import { getConfig } from "@/services/config-store";
-import { getLocalSubnet, probePrinter, scanForPrinters } from "@/services/printer-discovery";
+import { syncSavedPrinterStatus } from "@/services/printer-connection";
+import { getLocalSubnet, scanForPrinters } from "@/services/printer-discovery";
 
 export type PrinterScanResult = {
   printers: string[];
@@ -17,8 +18,7 @@ async function refreshPrinterStatusFromConfig(): Promise<void> {
     return;
   }
 
-  const reachable = await probePrinter(printerIp);
-  appState.setPrinterStatus(reachable ? "online" : "offline");
+  await syncSavedPrinterStatus(printerIp);
 }
 
 export async function runPrinterScan(): Promise<PrinterScanResult> {

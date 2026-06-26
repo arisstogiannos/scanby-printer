@@ -11,6 +11,8 @@ export const ALLOWED_ORIGINS = [
 
 export const PRINTER_PORT = 9100;
 export const SCAN_TIMEOUT_MS = 300;
+export const PRINTER_PROBE_TIMEOUT_MS = 2_000;
+export const POST_PRINT_GRACE_MS = 2_000;
 export const SCAN_CONCURRENCY = 50;
 export const PRINT_DEDUPE_MS = 30_000;
 

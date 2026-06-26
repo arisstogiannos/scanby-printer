@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { BrowserWindow, shell } from "electron";
 import { getAppIcon } from "@/main/app-icon";
-import { isConfigured } from "@/services/config-store";
 
 function getPreloadPath(): string {
   const candidates = [
@@ -87,7 +86,7 @@ function wasLaunchedHidden(): boolean {
 }
 
 export function showWindowForStartup(): void {
-  if (wasLaunchedHidden() || isConfigured()) {
+  if (wasLaunchedHidden()) {
     return;
   }
   showSetupWindow();

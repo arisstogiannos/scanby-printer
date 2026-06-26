@@ -7,7 +7,7 @@ import { initAutoLaunch, syncAutoLaunch } from "@/services/auto-launch";
 import { getConfig, initConfigStore, isConfigured, isPaired } from "@/services/config-store";
 import { initPrintHistoryStore } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
-import { probePrinter } from "@/services/printer-discovery";
+import { probeSavedPrinterReachable } from "@/services/printer-discovery";
 import {
   shutdownPrinterReconnectMonitor,
   startPrinterReconnectMonitor,
@@ -37,7 +37,7 @@ export async function bootstrapServices(): Promise<void> {
     appState.setPaired(config.businessName);
     if (config.printerIp) {
       appState.setPrinterIp(config.printerIp);
-      const online = await probePrinter(config.printerIp);
+      const online = await probeSavedPrinterReachable(config.printerIp);
       appState.setPrinterStatus(online ? "online" : "offline");
     }
     if (isConfigured()) {

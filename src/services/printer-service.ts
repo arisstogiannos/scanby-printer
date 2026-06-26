@@ -1,6 +1,8 @@
 import log from "electron-log";
 import { CharacterSet, PrinterTypes, ThermalPrinter } from "node-thermal-printer";
 import { appState } from "@/services/app-state";
+import { beginPrintOperation, endPrintOperation } from "@/services/printer-activity";
+import { probeSavedPrinterReachable } from "@/services/printer-discovery";
 import { PRINTER_PORT } from "@/shared/constants";
 import type { OrderPrintEvent, PrintOrder } from "@/shared/types";
 
@@ -117,6 +119,35 @@ async function renderOrder(
   printer.cut();
 }
 
+async function runPrinterJob(
+  printerIp: string,
+  printer: ThermalPrinter,
+  successLabel: string,
+): Promise<void> {
+  beginPrintOperation();
+  appState.setPrinterStatus("printing");
+
+  try {
+    await printer.execute();
+    appState.setPrinterStatus("online");
+    log.info(successLabel);
+  } catch (error) {
+    const reachable = await probeSavedPrinterReachable(printerIp);
+    if (reachable) {
+      appState.setPrinterStatus("online");
+      log.warn(`Printer job on ${printerIp} reported error but printer is reachable`, error);
+      log.info(successLabel);
+      return;
+    }
+
+    appState.setPrinterStatus("offline");
+    log.error(`Printer job failed on ${printerIp}`, error);
+    throw error;
+  } finally {
+    endPrintOperation();
+  }
+}
+
 export async function printOrder(
   printerIp: string,
   order: PrintOrder,
@@ -124,17 +155,11 @@ export async function printOrder(
 ): Promise<void> {
   const printer = createPrinter(printerIp);
   await renderOrder(printer, order, event);
-
-  appState.setPrinterStatus("printing");
-  try {
-    await printer.execute();
-    appState.setPrinterStatus("online");
-    log.info(`Printed ${event} for order ${order.id} (#${order.number})`);
-  } catch (error) {
-    appState.setPrinterStatus("offline");
-    log.error("Print failed", error);
-    throw error;
-  }
+  await runPrinterJob(
+    printerIp,
+    printer,
+    `Printed ${event} for order ${order.id} (#${order.number})`,
+  );
 }
 
 export async function testPrint(printerIp: string): Promise<void> {
@@ -149,14 +174,5 @@ export async function testPrint(printerIp: string): Promise<void> {
   printer.println(new Date().toLocaleString("el-GR"));
   printer.cut();
 
-  appState.setPrinterStatus("printing");
-  try {
-    await printer.execute();
-    appState.setPrinterStatus("online");
-    log.info(`Test print succeeded on ${printerIp}`);
-  } catch (error) {
-    appState.setPrinterStatus("offline");
-    log.error("Test print failed", error);
-    throw error;
-  }
+  await runPrinterJob(printerIp, printer, `Test print succeeded on ${printerIp}`);
 }

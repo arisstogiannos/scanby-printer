@@ -37,7 +37,12 @@ export function initAutoUpdater(): void {
     log.info("Update downloaded", info.version);
   });
 
-  void autoUpdater.checkForUpdatesAndNotify().catch((error: unknown) => {
-    log.error("Failed to check for updates", error);
-  });
+  void autoUpdater
+    .checkForUpdatesAndNotify()
+    .then((result) => {
+      log.info("Check for updates result", result);
+    })
+    .catch((error: unknown) => {
+      log.error("Failed to check for updates", error);
+    });
 }
