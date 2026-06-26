@@ -1,6 +1,6 @@
 {
   "name": "scanby-print-service",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Scanby kitchen ticket print service for network thermal printers",
   "main": "./out/main/index.js",
   "type": "module",
@@ -77,8 +77,7 @@
       "target": [
         "nsis",
         "appx"
-      ],
-      "disableWebInstaller": true
+      ]
     },
     "appx": {
       "applicationId": "ScanbyPrintService",

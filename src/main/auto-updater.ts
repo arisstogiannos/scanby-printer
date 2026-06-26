@@ -16,6 +16,7 @@ export function initAutoUpdater(): void {
   autoUpdater.logger = log;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.disableWebInstaller = true;
 
   autoUpdater.on("checking-for-update", () => {
     log.info("Checking for update");
