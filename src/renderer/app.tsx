@@ -1,7 +1,6 @@
 import appIcon from "@resources/icon.png";
 import { useCallback, useEffect, useState } from "react";
 import type { RendererAppState } from "@/preload/index";
-import { PrintHistory } from "./components/print-history";
 import { PrinterActions } from "./components/printer-actions";
 import { PrinterSetup } from "./components/printer-setup";
 import { VenueStatus } from "./components/venue-status";
@@ -101,7 +100,7 @@ export function App() {
         </section>
       ) : null}
 
-      {state.paired ? <PrintHistory entries={state.printHistory} /> : null}
+      {/* {state.paired ? <PrintHistory entries={state.printHistory} /> : null} */}
 
       <footer className="mt-auto pt-2 text-center text-xs text-zinc-600">v{state.version}</footer>
     </main>
