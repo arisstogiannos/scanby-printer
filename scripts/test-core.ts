@@ -12,8 +12,8 @@ function testBuildTicketLines(): void {
     table: "12",
     createdAt: "2026-06-11T10:30:00.000Z",
     items: [
-      { quantity: 2, name: "Salad", notes: "No onion" },
-      { quantity: 1, name: "Water" },
+      { quantity: 2, name: "Salad", price: 800, notes: "No onion" },
+      { quantity: 1, name: "Water", price: 250 },
     ],
   };
 
@@ -23,6 +23,7 @@ function testBuildTicketLines(): void {
   assert.equal(created.itemLines.length, 2);
   assert.equal(created.itemLines[0].note, "No onion");
   assert.equal(created.showItems, true);
+  assert.equal(created.totalLine, "18,50 €");
   assert.ok(created.timeLine.length > 0);
 
   const updated = buildTicketLines(order, "order_updated");
@@ -34,6 +35,19 @@ function testBuildTicketLines(): void {
   assert.equal(cancelled.headerLine, "ΑΚΥΡΩΣΗ");
   assert.equal(cancelled.footerLine, "Η παραγγελία ακυρώθηκε");
   assert.equal(cancelled.showItems, false);
+  assert.equal(cancelled.totalLine, undefined);
+
+  const noPrices = buildTicketLines(
+    {
+      id: "order-2",
+      number: 1,
+      table: "3",
+      createdAt: "2026-06-11T10:30:00.000Z",
+      items: [{ quantity: 1, name: "Tea" }],
+    },
+    "order_created",
+  );
+  assert.equal(noPrices.totalLine, undefined);
 }
 
 function testDashboardPairPayload(): void {
@@ -55,12 +69,13 @@ function testDashboardPrintPayload(): void {
     table_number: "5",
     order_number: 12,
     created_at: "2026-06-11T12:00:00.000Z",
-    items: [{ quantity: 1, name: "Coffee" }],
+    items: [{ quantity: 1, name: "Coffee", unit_price: 350 }],
   });
 
   assert.ok(order);
   assert.equal(order?.table, "5");
   assert.equal(order?.number, 12);
+  assert.equal(order?.items[0]?.price, 350);
 }
 
 function testConstants(): void {

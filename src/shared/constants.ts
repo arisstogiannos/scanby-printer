@@ -16,6 +16,8 @@ export const POST_PRINT_GRACE_MS = 2_000;
 export const SCAN_CONCURRENCY = 50;
 export const PRINT_DEDUPE_MS = 30_000;
 
+export const CENTS_PER_EUR = 100;
+
 export const SUPABASE_RECONNECT_BASE_MS = 1_000;
 export const SUPABASE_RECONNECT_MAX_MS = 30_000;
 

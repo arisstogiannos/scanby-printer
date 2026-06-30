@@ -7,8 +7,8 @@ const sampleOrder: PrintOrder = {
   table: "5",
   createdAt: new Date().toISOString(),
   items: [
-    { quantity: 2, name: "Greek Salad", notes: "No onion" },
-    { quantity: 1, name: "Moussaka" },
+    { quantity: 2, name: "Greek Salad", price: 950, notes: "No onion" },
+    { quantity: 1, name: "Moussaka", price: 1200 },
   ],
 };
 

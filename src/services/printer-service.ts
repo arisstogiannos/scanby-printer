@@ -3,8 +3,8 @@ import { CharacterSet, PrinterTypes, ThermalPrinter } from "node-thermal-printer
 import { appState } from "@/services/app-state";
 import { beginPrintOperation, endPrintOperation } from "@/services/printer-activity";
 import { probeSavedPrinterReachable } from "@/services/printer-discovery";
-import { PRINTER_PORT } from "@/shared/constants";
-import type { OrderPrintEvent, PrintOrder } from "@/shared/types";
+import { CENTS_PER_EUR, PRINTER_PORT } from "@/shared/constants";
+import type { OrderPrintEvent, PrintOrder, PrintOrderItem } from "@/shared/types";
 
 const EVENT_HEADERS: Record<OrderPrintEvent, string> = {
   order_created: "ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ",
@@ -37,6 +37,35 @@ function formatPreferencesNotes(notes?: string): string | undefined {
   return notes.trim();
 }
 
+function formatOrderTotal(totalCents: number): string {
+  return new Intl.NumberFormat("el-GR", {
+    style: "currency",
+    currency: "EUR",
+  }).format(totalCents / CENTS_PER_EUR);
+}
+
+function calculateOrderTotalCents(items: PrintOrderItem[]): number | undefined {
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  let totalCents = 0;
+  for (const item of items) {
+    if (
+      item.price === undefined ||
+      !Number.isInteger(item.price) ||
+      item.price < 0 ||
+      !Number.isFinite(item.quantity) ||
+      item.quantity <= 0
+    ) {
+      return undefined;
+    }
+    totalCents += item.quantity * item.price;
+  }
+
+  return totalCents;
+}
+
 export function buildTicketLines(
   order: PrintOrder,
   event: OrderPrintEvent = "order_created",
@@ -44,6 +73,7 @@ export function buildTicketLines(
   headerLine: string;
   tableLine: string;
   itemLines: Array<{ main: string; note?: string }>;
+  totalLine?: string;
   footerLine?: string;
   timeLine: string;
   showItems: boolean;
@@ -59,6 +89,8 @@ export function buildTicketLines(
       ? `ORDER ${order.id.slice(0, 8)}`
       : `TABLE ${order.table}${tableSuffix}`;
 
+  const orderTotalCents = calculateOrderTotalCents(order.items);
+
   return {
     headerLine: EVENT_HEADERS[event],
     tableLine,
@@ -66,6 +98,10 @@ export function buildTicketLines(
       main: `${item.quantity}x  ${item.name}`,
       note: formatPreferencesNotes(item.notes),
     })),
+    totalLine:
+      orderTotalCents !== undefined && event !== "order_cancelled"
+        ? formatOrderTotal(orderTotalCents)
+        : undefined,
     footerLine: EVENT_FOOTERS[event],
     timeLine,
     showItems: event !== "order_cancelled" && order.items.length > 0,
@@ -77,10 +113,8 @@ async function renderOrder(
   order: PrintOrder,
   event: OrderPrintEvent = "order_created",
 ): Promise<void> {
-  const { headerLine, tableLine, itemLines, footerLine, timeLine, showItems } = buildTicketLines(
-    order,
-    event,
-  );
+  const { headerLine, tableLine, itemLines, totalLine, footerLine, timeLine, showItems } =
+    buildTicketLines(order, event);
 
   printer.alignCenter();
   printer.bold(true);
@@ -103,6 +137,14 @@ async function renderOrder(
         printer.println(`     > ${item.note}`);
       }
     }
+    printer.drawLine();
+  }
+
+  if (totalLine) {
+    printer.alignRight();
+    printer.bold(true);
+    printer.println(`ΣΥΝΟΛΟ  ${totalLine}`);
+    printer.bold(false);
     printer.drawLine();
   }
 

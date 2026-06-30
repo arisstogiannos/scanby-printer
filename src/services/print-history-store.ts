@@ -54,8 +54,12 @@ function isValidPrintOrder(value: unknown): value is PrintOrder {
     const i = item as Record<string, unknown>;
     return (
       typeof i.quantity === "number" &&
+      Number.isFinite(i.quantity) &&
+      i.quantity > 0 &&
       typeof i.name === "string" &&
-      (i.notes === undefined || typeof i.notes === "string")
+      (i.notes === undefined || typeof i.notes === "string") &&
+      (i.price === undefined ||
+        (typeof i.price === "number" && Number.isInteger(i.price) && i.price >= 0))
     );
   });
 }

@@ -18,6 +18,7 @@ export type PairPayload = {
 export type PrintOrderItem = {
   quantity: number;
   name: string;
+  price?: number; // unit price in cents
   notes?: string;
 };
 
