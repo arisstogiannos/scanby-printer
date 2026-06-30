@@ -5,6 +5,8 @@ import { startLocalServer, stopLocalServer } from "@/server/index";
 import { appState } from "@/services/app-state";
 import { initAutoLaunch, syncAutoLaunch } from "@/services/auto-launch";
 import { getConfig, initConfigStore, isConfigured, isPaired } from "@/services/config-store";
+import { shutdownHealthMonitor, startHealthMonitor } from "@/services/health-monitor";
+import { initPendingPrintQueueStore } from "@/services/pending-print-queue-store";
 import { initPrintHistoryStore } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
 import { probeSavedPrinterReachable } from "@/services/printer-discovery";
@@ -24,6 +26,7 @@ export async function bootstrapServices(): Promise<void> {
   const userDataPath = app.getPath("userData");
   initConfigStore(userDataPath);
   initPrintHistoryStore(userDataPath);
+  initPendingPrintQueueStore(userDataPath);
   initAutoLaunch();
 
   await startLocalServer();
@@ -48,10 +51,13 @@ export async function bootstrapServices(): Promise<void> {
   }
 
   startPrinterReconnectMonitor();
+  startHealthMonitor();
+  printQueue.restorePendingJobs();
 }
 
 export async function shutdownServices(): Promise<void> {
   shutdownPrinterReconnectMonitor();
+  shutdownHealthMonitor();
   await printQueue.drain();
   await shutdownSupabaseListener();
   await stopLocalServer();

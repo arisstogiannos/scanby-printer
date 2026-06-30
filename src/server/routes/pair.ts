@@ -3,6 +3,8 @@ import type { Request, Response } from "express";
 import { appState } from "@/services/app-state";
 import { getConfig, savePairing } from "@/services/config-store";
 import { retainHistoryForBusiness } from "@/services/print-history-store";
+import { printQueue } from "@/services/print-queue";
+import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
 import { restartSupabaseListener } from "@/services/supabase-listener";
 import { normalizePairPayload } from "@/shared/pair-payload";
 
@@ -18,10 +20,12 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
     savePairing(payload);
     if (previousBusinessId !== payload.businessId) {
       retainHistoryForBusiness(payload.businessId);
+      printQueue.clear();
     }
     appState.setPaired(payload.businessName);
     await restartSupabaseListener();
     log.info(`Paired with business ${payload.businessName}`);
+    void autoConnectPrinterAfterPair();
     res.json({ ok: true });
   } catch (error) {
     log.error("Pair failed", error);

@@ -3,6 +3,7 @@ import { appState } from "@/services/app-state";
 import { disableAutoLaunch } from "@/services/auto-launch";
 import { clearConfig, isPaired } from "@/services/config-store";
 import { clearPrintHistory } from "@/services/print-history-store";
+import { printQueue } from "@/services/print-queue";
 import { shutdownSupabaseListener } from "@/services/supabase-listener";
 
 export async function unpairApp(): Promise<void> {
@@ -11,6 +12,7 @@ export async function unpairApp(): Promise<void> {
   }
 
   await shutdownSupabaseListener();
+  printQueue.clear();
   await disableAutoLaunch();
   clearConfig();
   clearPrintHistory();

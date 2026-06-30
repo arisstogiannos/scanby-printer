@@ -41,6 +41,7 @@ export async function connectToPrinter(ip: string): Promise<{ ip: string }> {
   appState.setPrinterIp(printerIp);
   appState.setPrinterStatus("online");
   appState.setSetupComplete();
+  appState.clearPendingPrinterPicker();
   await enableAutoLaunch();
 
   return { ip: printerIp };

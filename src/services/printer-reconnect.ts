@@ -1,12 +1,19 @@
 import log from "electron-log";
 import { appState } from "@/services/app-state";
+import { autoRescanForPrinter } from "@/services/printer-auto-discovery";
 import { reconnectPrinter } from "@/services/printer-connection";
-import { PRINTER_RECONNECT_INTERVAL_MS, PRINTER_RECONNECT_MAX_MS } from "@/shared/constants";
+import {
+  AUTO_RESCAN_AFTER_FAILED_PROBES,
+  PRINTER_RECONNECT_INTERVAL_MS,
+  PRINTER_RECONNECT_MAX_MS,
+} from "@/shared/constants";
 import type { PrinterStatus } from "@/shared/types";
 
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempt = 0;
+let failedProbeCount = 0;
 let attemptInFlight = false;
+let rescanInFlight = false;
 let lastPrinterStatus: PrinterStatus | null = null;
 let stopped = true;
 
@@ -19,6 +26,10 @@ function clearReconnectTimer(): void {
 
 function resetBackoff(): void {
   reconnectAttempt = 0;
+}
+
+function resetFailedProbes(): void {
+  failedProbeCount = 0;
 }
 
 function shouldAutoReconnect(): boolean {
@@ -53,10 +64,27 @@ async function attemptReconnect(): Promise<void> {
     const result = await reconnectPrinter();
     if (result.online) {
       resetBackoff();
+      resetFailedProbes();
       log.info(`Printer reconnected at ${result.ip}`);
       return;
     }
-    log.debug(`Printer still unreachable at ${result.ip}, retrying...`);
+
+    failedProbeCount += 1;
+    log.debug(
+      `Printer still unreachable at ${result.ip}, probe ${failedProbeCount}/${AUTO_RESCAN_AFTER_FAILED_PROBES}`,
+    );
+
+    if (failedProbeCount >= AUTO_RESCAN_AFTER_FAILED_PROBES && !rescanInFlight) {
+      rescanInFlight = true;
+      resetFailedProbes();
+      try {
+        await autoRescanForPrinter();
+      } catch (error) {
+        log.error("Auto-rescan on offline failed", error);
+      } finally {
+        rescanInFlight = false;
+      }
+    }
   } catch (error) {
     log.error("Printer auto-reconnect failed", error);
   } finally {
@@ -73,6 +101,7 @@ function onAppStateChange(): void {
   const snapshot = appState.getSnapshot();
   if (snapshot.printerStatus === "offline" && lastPrinterStatus !== "offline") {
     resetBackoff();
+    resetFailedProbes();
   }
   lastPrinterStatus = snapshot.printerStatus;
 
@@ -103,5 +132,6 @@ export function shutdownPrinterReconnectMonitor(): void {
   appState.off("change", onAppStateChange);
   clearReconnectTimer();
   resetBackoff();
+  resetFailedProbes();
   lastPrinterStatus = null;
 }

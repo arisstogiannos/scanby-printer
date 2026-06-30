@@ -4,10 +4,16 @@ import type { PrinterStatus } from "@/shared/types";
 type PrinterActionsProps = {
   printerIp: string | null;
   printerStatus: PrinterStatus;
+  pendingPrinterPicker: string[] | null;
   onUpdated: () => void;
 };
 
-export function PrinterActions({ printerIp, printerStatus, onUpdated }: PrinterActionsProps) {
+export function PrinterActions({
+  printerIp,
+  printerStatus,
+  pendingPrinterPicker,
+  onUpdated,
+}: PrinterActionsProps) {
   const [reconnecting, setReconnecting] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [switchingIp, setSwitchingIp] = useState<string | null>(null);
@@ -85,6 +91,7 @@ export function PrinterActions({ printerIp, printerStatus, onUpdated }: PrinterA
     try {
       await window.scanbyPrint.switchPrinterIp(ip);
       setFoundPrinters([]);
+      await window.scanbyPrint.clearPendingPrinterPicker();
       setMessage(`Now using printer at ${ip}.`);
       onUpdated();
     } catch (e) {
@@ -95,6 +102,13 @@ export function PrinterActions({ printerIp, printerStatus, onUpdated }: PrinterA
   }
 
   const alternatePrinters = foundPrinters.filter((ip) => ip !== printerIp);
+  const pickerPrinters = pendingPrinterPicker ?? alternatePrinters;
+  const showPicker = pickerPrinters.length > 0;
+
+  async function handleDismissPicker() {
+    await window.scanbyPrint.clearPendingPrinterPicker();
+    onUpdated();
+  }
 
   return (
     <div className="space-y-3">
@@ -135,11 +149,30 @@ export function PrinterActions({ printerIp, printerStatus, onUpdated }: PrinterA
         </p>
       ) : null}
 
-      {alternatePrinters.length > 0 ? (
+      {pendingPrinterPicker && pendingPrinterPicker.length > 1 ? (
+        <p className="rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-amber-200 text-sm">
+          Multiple printers detected after reconnect. Pick the correct one below.
+        </p>
+      ) : null}
+
+      {showPicker ? (
         <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-          <p className="text-xs text-zinc-500">Other printers found</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-zinc-500">
+              {pendingPrinterPicker ? "Printers found — choose one" : "Other printers found"}
+            </p>
+            {pendingPrinterPicker ? (
+              <button
+                type="button"
+                onClick={() => void handleDismissPicker()}
+                className="text-xs text-zinc-500 transition hover:text-zinc-300"
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </div>
           <ul className="space-y-2">
-            {alternatePrinters.map((ip) => (
+            {pickerPrinters.map((ip) => (
               <li key={ip} className="flex items-center justify-between gap-3">
                 <span className="font-mono text-sm text-zinc-200">{ip}</span>
                 <button

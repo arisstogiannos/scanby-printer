@@ -43,6 +43,7 @@ export type AppStateSnapshot = {
   printerIp: string | null;
   printerStatus: PrinterStatus;
   setupComplete: boolean;
+  pendingPrinterPicker: string[] | null;
 };
 
 export type SetupStage = "waiting-pair" | "printer-setup" | "complete";

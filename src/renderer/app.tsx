@@ -96,6 +96,7 @@ export function App() {
           <PrinterActions
             printerIp={state.printerIp}
             printerStatus={state.printerStatus}
+            pendingPrinterPicker={state.pendingPrinterPicker}
             onUpdated={refresh}
           />
         </section>

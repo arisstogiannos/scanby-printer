@@ -18,6 +18,16 @@ type CancelPayload = {
   orderId?: string;
 };
 
+let channelStatus: string = "CLOSED";
+
+export function getSupabaseChannelStatus(): string {
+  return channelStatus;
+}
+
+export function isSupabaseSubscribed(): boolean {
+  return channelStatus === "SUBSCRIBED";
+}
+
 let supabaseClient: SupabaseClient | null = null;
 let channel: RealtimeChannel | null = null;
 let reconnectAttempt = 0;
@@ -133,6 +143,8 @@ export async function startSupabaseListener(): Promise<void> {
           return;
         }
 
+        channelStatus = status;
+
         if (status === "SUBSCRIBED") {
           reconnectAttempt = 0;
           log.info(`Supabase channel ${channelName}: subscribed`);
@@ -161,6 +173,7 @@ export async function stopSupabaseListener(): Promise<void> {
   clearReconnectTimer();
   await teardownChannel();
   supabaseClient = null;
+  channelStatus = "CLOSED";
 }
 
 export async function restartSupabaseListener(): Promise<void> {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AUTO_SAVE_CANCEL_MS } from "@/shared/constants";
 
 type PrinterSetupProps = {
   businessName: string;
@@ -10,6 +11,7 @@ type SelectionMode = "scanned" | "manual";
 
 export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetupProps) {
   const [printers, setPrinters] = useState<string[]>([]);
+  const [subnet, setSubnet] = useState<string | null>(null);
   const [selectedIp, setSelectedIp] = useState("");
   const [manualIp, setManualIp] = useState("");
   const [mode, setMode] = useState<SelectionMode>("scanned");
@@ -19,49 +21,115 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [autoSaveCountdown, setAutoSaveCountdown] = useState<number | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoPipelineIpRef = useRef<string | null>(null);
 
   const activeIp = mode === "manual" ? manualIp.trim() : selectedIp;
+
+  const clearAutoSaveTimer = useCallback((): void => {
+    if (autoSaveTimerRef.current) {
+      clearInterval(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    setAutoSaveCountdown(null);
+  }, []);
+
+  const runSmartPipeline = useCallback(
+    async (ip: string) => {
+      if (autoPipelineIpRef.current === ip) {
+        return;
+      }
+      autoPipelineIpRef.current = ip;
+
+      setTesting(true);
+      setError(null);
+      try {
+        await window.scanbyPrint.testPrint(ip);
+        setMessage("Test print OK. Saving automatically in 5s…");
+
+        let remaining = AUTO_SAVE_CANCEL_MS / 1000;
+        setAutoSaveCountdown(remaining);
+
+        autoSaveTimerRef.current = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearAutoSaveTimer();
+            void (async () => {
+              setSaving(true);
+              try {
+                await window.scanbyPrint.savePrinter(ip);
+                setMessage("Saved. App is now running in the system tray.");
+                onSaved();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Save failed");
+              } finally {
+                setSaving(false);
+              }
+            })();
+            return;
+          }
+          setAutoSaveCountdown(remaining);
+        }, 1000);
+      } catch (e) {
+        autoPipelineIpRef.current = null;
+        setError(e instanceof Error ? e.message : "Test print failed");
+      } finally {
+        setTesting(false);
+      }
+    },
+    [onSaved, clearAutoSaveTimer],
+  );
 
   const runScan = useCallback(async () => {
     setScanning(true);
     setError(null);
     setMessage(null);
+    clearAutoSaveTimer();
+    autoPipelineIpRef.current = null;
+
     try {
       const result = await window.scanbyPrint.scanPrinters();
       setPrinters(result.printers);
+      setSubnet(result.subnet ?? null);
+
       if (result.printers.length === 1) {
-        setSelectedIp(result.printers[0]);
+        const ip = result.printers[0];
+        setSelectedIp(ip);
         setMode("scanned");
-        setMessage("One printer found — auto-selected.");
+        setMessage("One printer found — running test print…");
+        void runSmartPipeline(ip);
       } else if (result.printers.length === 0) {
         setMode("manual");
-        setMessage("No printers found. Enter IP manually.");
+        setMessage("No printers found. Enter IP manually or rescan.");
       } else {
         setSelectedIp(result.printers[0]);
-        setMessage(`Found ${result.printers.length} printers.`);
+        setMessage(`Found ${result.printers.length} printers. Pick one or rescan.`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scan failed");
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [runSmartPipeline, clearAutoSaveTimer]);
 
   useEffect(() => {
     void runScan();
-  }, [runScan]);
+    return () => clearAutoSaveTimer();
+  }, [runScan, clearAutoSaveTimer]);
 
   async function handleTestPrint() {
     if (!activeIp) {
       setError("Select or enter a printer IP first");
       return;
     }
+    clearAutoSaveTimer();
+    autoPipelineIpRef.current = null;
     setTesting(true);
     setError(null);
     try {
       await window.scanbyPrint.testPrint(activeIp);
       setMessage("Test print sent successfully.");
-      onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Test print failed");
     } finally {
@@ -70,6 +138,7 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
   }
 
   async function handleDisconnect() {
+    clearAutoSaveTimer();
     setDisconnecting(true);
     setError(null);
     try {
@@ -87,6 +156,7 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
       setError("Select or enter a printer IP first");
       return;
     }
+    clearAutoSaveTimer();
     setSaving(true);
     setError(null);
     try {
@@ -100,6 +170,12 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
     }
   }
 
+  function handleCancelAutoSave() {
+    clearAutoSaveTimer();
+    autoPipelineIpRef.current = null;
+    setMessage("Auto-save cancelled. Use Save & Start when ready.");
+  }
+
   return (
     <section className="flex flex-col gap-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
       <div className="flex items-start justify-between gap-3">
@@ -107,7 +183,7 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
           <p className="text-primary text-sm">Linked to</p>
           <p className="font-medium text-lg">{businessName}</p>
           <p className="mt-1 text-xs text-zinc-500">
-            From Scanby dashboard Connect Printer. Wrong venue?
+            Scan runs automatically on pair. Rescan anytime to change printer.
           </p>
         </div>
         <button
@@ -120,15 +196,16 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
         </button>
       </div>
 
-      <div>
+      <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={() => void runScan()}
-          disabled={scanning}
+          disabled={scanning || testing || saving}
           className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-2 text-sm transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
         >
-          {scanning ? "Scanning..." : "Scan for printers"}
+          {scanning ? "Scanning..." : "Rescan network"}
         </button>
+        {subnet ? <span className="text-xs text-zinc-500">Subnet {subnet}.x</span> : null}
       </div>
 
       {printers.length > 0 ? (
@@ -148,6 +225,8 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
                 name="printer"
                 checked={mode === "scanned" && selectedIp === ip}
                 onChange={() => {
+                  clearAutoSaveTimer();
+                  autoPipelineIpRef.current = null;
                   setMode("scanned");
                   setSelectedIp(ip);
                 }}
@@ -168,7 +247,11 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
           type="radio"
           name="printer"
           checked={mode === "manual"}
-          onChange={() => setMode("manual")}
+          onChange={() => {
+            clearAutoSaveTimer();
+            autoPipelineIpRef.current = null;
+            setMode("manual");
+          }}
           className="mt-1 accent-primary"
         />
         <span className="flex-1">
@@ -177,6 +260,8 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
             type="text"
             value={manualIp}
             onChange={(e) => {
+              clearAutoSaveTimer();
+              autoPipelineIpRef.current = null;
               setManualIp(e.target.value);
               setMode("manual");
             }}
@@ -185,6 +270,19 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
           />
         </span>
       </label>
+
+      {autoSaveCountdown !== null ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">
+          <p className="text-amber-200 text-sm">Auto-saving in {autoSaveCountdown}s…</p>
+          <button
+            type="button"
+            onClick={handleCancelAutoSave}
+            className="shrink-0 rounded-md border border-amber-800/50 px-2.5 py-1 text-amber-200 text-xs transition hover:bg-amber-950/40"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
 
       {message ? (
         <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-primary text-sm">
@@ -201,7 +299,7 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
         <button
           type="button"
           onClick={() => void handleTestPrint()}
-          disabled={testing || !activeIp}
+          disabled={testing || saving || !activeIp}
           className="flex-1 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
         >
           {testing ? "Printing..." : "Test Print"}
@@ -209,7 +307,7 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
         <button
           type="button"
           onClick={() => void handleSave()}
-          disabled={saving || !activeIp}
+          disabled={saving || testing || !activeIp}
           className="flex-1 rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground text-sm transition hover:opacity-90 disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save & Start"}

@@ -125,6 +125,11 @@ export function registerIpcHandlers(): void {
       : null;
   });
 
+  ipcMain.handle("printer:clear-picker", () => {
+    appState.clearPendingPrinterPicker();
+    return { ok: true };
+  });
+
   ipcMain.handle("app:unpair", async () => {
     await unpairApp();
     showSetupWindow();

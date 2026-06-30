@@ -17,7 +17,8 @@ export type RendererAppState = AppStateSnapshot & {
 
 const api = {
   getAppState: (): Promise<RendererAppState> => ipcRenderer.invoke("app:get-state"),
-  scanPrinters: (): Promise<{ printers: string[] }> => ipcRenderer.invoke("printer:scan"),
+  scanPrinters: (): Promise<{ printers: string[]; subnet: string | null }> =>
+    ipcRenderer.invoke("printer:scan"),
   probePrinter: (ip: string): Promise<boolean> => ipcRenderer.invoke("printer:probe", ip),
   testPrint: (ip: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("printer:test", ip),
   savePrinter: (ip: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("printer:save", ip),
@@ -25,6 +26,8 @@ const api = {
     ipcRenderer.invoke("printer:switch-ip", ip),
   reconnectPrinter: (): Promise<{ online: boolean; ip: string | null }> =>
     ipcRenderer.invoke("printer:reconnect"),
+  clearPendingPrinterPicker: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("printer:clear-picker"),
   unpair: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("app:unpair"),
 };
 

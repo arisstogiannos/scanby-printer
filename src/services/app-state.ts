@@ -12,6 +12,7 @@ class AppState extends EventEmitter<AppStateEvents> {
   private printerStatus: PrinterStatus = "offline";
   private setupComplete = false;
   private setupStage: SetupStage = "waiting-pair";
+  private pendingPrinterPicker: string[] | null = null;
 
   getSnapshot(): AppStateSnapshot {
     return {
@@ -20,6 +21,7 @@ class AppState extends EventEmitter<AppStateEvents> {
       printerIp: this.printerIp,
       printerStatus: this.printerStatus,
       setupComplete: this.setupComplete,
+      pendingPrinterPicker: this.pendingPrinterPicker,
     };
   }
 
@@ -53,6 +55,19 @@ class AppState extends EventEmitter<AppStateEvents> {
     this.emitChange();
   }
 
+  setPendingPrinterPicker(printers: string[]): void {
+    this.pendingPrinterPicker = printers;
+    this.emitChange();
+  }
+
+  clearPendingPrinterPicker(): void {
+    if (!this.pendingPrinterPicker) {
+      return;
+    }
+    this.pendingPrinterPicker = null;
+    this.emitChange();
+  }
+
   reset(): void {
     this.paired = false;
     this.businessName = null;
@@ -60,6 +75,7 @@ class AppState extends EventEmitter<AppStateEvents> {
     this.printerStatus = "offline";
     this.setupComplete = false;
     this.setupStage = "waiting-pair";
+    this.pendingPrinterPicker = null;
     this.emitChange();
   }
 
