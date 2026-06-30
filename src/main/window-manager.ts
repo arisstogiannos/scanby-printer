@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { BrowserWindow, shell } from "electron";
 import { getAppIcon } from "@/main/app-icon";
+import { broadcastAppState } from "@/main/ipc/state-broadcaster";
 
 function getPreloadPath(): string {
   const candidates = [
@@ -51,6 +52,10 @@ export function createSetupWindow(): BrowserWindow {
 
   setupWindow.on("closed", () => {
     setupWindow = null;
+  });
+
+  setupWindow.webContents.on("did-finish-load", () => {
+    broadcastAppState();
   });
 
   setupWindow.webContents.setWindowOpenHandler(({ url }) => {

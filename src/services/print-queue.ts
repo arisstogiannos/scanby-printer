@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import log from "electron-log";
+import { flashTrayIconRed } from "@/main/tray-effects";
 import { getConfig } from "@/services/config-store";
 import {
   loadPendingJobs,
@@ -61,6 +62,18 @@ function fromPersistedJob(job: PersistedQueueJob): QueueJob {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatFailureReason(errorMessage: string): string {
+  const lower = errorMessage.toLowerCase();
+  if (
+    lower.includes("offline") ||
+    lower.includes("unreachable") ||
+    lower.includes("econnrefused")
+  ) {
+    return "printer offline";
+  }
+  return errorMessage;
 }
 
 class PrintQueue {
@@ -268,10 +281,10 @@ class PrintQueue {
           });
         }
 
-        showTrayNotification(
-          "Print failed",
-          `Order #${job.order.number} (table ${job.order.table}) could not be printed.`,
-        );
+        const failureReason = formatFailureReason(message);
+
+        showTrayNotification(`Order #${job.order.number} failed`, failureReason);
+        flashTrayIconRed();
       }
     }
 

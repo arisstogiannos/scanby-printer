@@ -6,6 +6,8 @@ import { retainHistoryForBusiness } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
 import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
 import { restartSupabaseListener } from "@/services/supabase-listener";
+import { showTrayNotification } from "@/services/tray-notifications";
+import { hasSeenPairNotification, markPairNotificationSeen } from "@/services/user-preferences";
 import { normalizePairPayload } from "@/shared/pair-payload";
 
 export async function pairHandler(req: Request, res: Response): Promise<void> {
@@ -25,6 +27,15 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
     appState.setPaired(payload.businessName);
     await restartSupabaseListener();
     log.info(`Paired with business ${payload.businessName}`);
+
+    if (!hasSeenPairNotification()) {
+      markPairNotificationSeen();
+      showTrayNotification(
+        `Connected to ${payload.businessName}`,
+        "Choose your kitchen printer to finish setup.",
+      );
+    }
+
     void autoConnectPrinterAfterPair();
     res.json({ ok: true });
   } catch (error) {

@@ -1,5 +1,10 @@
 import { EventEmitter } from "node:events";
-import type { AppStateSnapshot, PrinterStatus, SetupStage } from "@/shared/types";
+import type {
+  AppStateSnapshot,
+  PrinterScanSnapshot,
+  PrinterStatus,
+  SetupStage,
+} from "@/shared/types";
 
 type AppStateEvents = {
   change: [AppStateSnapshot];
@@ -13,6 +18,7 @@ class AppState extends EventEmitter<AppStateEvents> {
   private setupComplete = false;
   private setupStage: SetupStage = "waiting-pair";
   private pendingPrinterPicker: string[] | null = null;
+  private lastScan: PrinterScanSnapshot | null = null;
 
   getSnapshot(): AppStateSnapshot {
     return {
@@ -22,6 +28,7 @@ class AppState extends EventEmitter<AppStateEvents> {
       printerStatus: this.printerStatus,
       setupComplete: this.setupComplete,
       pendingPrinterPicker: this.pendingPrinterPicker,
+      lastScan: this.lastScan,
     };
   }
 
@@ -68,6 +75,11 @@ class AppState extends EventEmitter<AppStateEvents> {
     this.emitChange();
   }
 
+  setLastScan(scan: PrinterScanSnapshot): void {
+    this.lastScan = scan;
+    this.emitChange();
+  }
+
   reset(): void {
     this.paired = false;
     this.businessName = null;
@@ -76,6 +88,7 @@ class AppState extends EventEmitter<AppStateEvents> {
     this.setupComplete = false;
     this.setupStage = "waiting-pair";
     this.pendingPrinterPicker = null;
+    this.lastScan = null;
     this.emitChange();
   }
 

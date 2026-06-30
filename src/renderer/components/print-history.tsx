@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 import type { PrintHistoryEntry, PrintHistorySource, PrintHistoryStatus } from "@/shared/types";
 
 type PrintHistoryProps = {
   entries: PrintHistoryEntry[];
+  onRetry?: () => void;
 };
 
 type PayloadField = {
@@ -150,11 +151,31 @@ function PayloadDetails({ entry }: { entry: PrintHistoryEntry }) {
   );
 }
 
-export function PrintHistory({ entries }: PrintHistoryProps) {
+export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   function toggleEntry(id: string) {
     setExpandedId((current) => (current === id ? null : id));
+  }
+
+  async function handleRetry(entry: PrintHistoryEntry, event: MouseEvent) {
+    event.stopPropagation();
+    setRetryingId(entry.id);
+    setRetryError(null);
+
+    try {
+      const result = await window.scanbyPrint.retryPrint(entry.id);
+      if (!result.ok) {
+        setRetryError("Print was skipped — duplicate order within 30s.");
+      }
+      onRetry?.();
+    } catch (e) {
+      setRetryError(e instanceof Error ? e.message : "Retry failed");
+    } finally {
+      setRetryingId(null);
+    }
   }
 
   return (
@@ -163,6 +184,12 @@ export function PrintHistory({ entries }: PrintHistoryProps) {
         <h2 className="font-medium text-sm text-zinc-200">Print history</h2>
         <span className="text-xs text-zinc-500">{entries.length} / 10 recent</span>
       </div>
+
+      {retryError ? (
+        <p className="mb-3 rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-red-400 text-sm">
+          {retryError}
+        </p>
+      ) : null}
 
       {entries.length === 0 ? (
         <p className="rounded-lg border border-zinc-800/80 border-dashed px-4 py-8 text-center text-sm text-zinc-500">
@@ -210,6 +237,16 @@ export function PrintHistory({ entries }: PrintHistoryProps) {
                     ) : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {entry.status === "failed" && entry.payload ? (
+                      <button
+                        type="button"
+                        onClick={(event) => void handleRetry(entry, event)}
+                        disabled={retryingId === entry.id}
+                        className="rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-primary text-xs transition hover:bg-primary/20 disabled:opacity-50"
+                      >
+                        {retryingId === entry.id ? "..." : "Retry"}
+                      </button>
+                    ) : null}
                     <div className="text-right">
                       <p className="text-xs text-zinc-400">{formatTime(entry.printedAt)}</p>
                       <p className="text-[10px] text-zinc-600 uppercase tracking-wide">

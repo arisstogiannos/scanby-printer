@@ -37,6 +37,12 @@ export type StatusResponse = {
   paired: boolean;
 };
 
+export type PrinterScanSnapshot = {
+  printers: string[];
+  subnet: string | null;
+  completedAt: string;
+};
+
 export type AppStateSnapshot = {
   paired: boolean;
   businessName: string | null;
@@ -44,6 +50,7 @@ export type AppStateSnapshot = {
   printerStatus: PrinterStatus;
   setupComplete: boolean;
   pendingPrinterPicker: string[] | null;
+  lastScan: PrinterScanSnapshot | null;
 };
 
 export type SetupStage = "waiting-pair" | "printer-setup" | "complete";
@@ -65,4 +72,30 @@ export type PrintHistoryEntry = {
   status: PrintHistoryStatus;
   payload?: PrintOrder;
   error?: string;
+};
+
+export type UpdateStatus = "idle" | "checking" | "available" | "downloading" | "ready" | "error";
+
+export type UpdateState = {
+  status: UpdateStatus;
+  version: string | null;
+  lastCheckedAt: string | null;
+  isStoreBuild: boolean;
+  error: string | null;
+};
+
+export type RendererAppState = AppStateSnapshot & {
+  version: string;
+  setupStage: SetupStage;
+  paired: boolean;
+  configured: boolean;
+  configSummary: {
+    businessId: string | null;
+    businessName: string | null;
+    printerIp: string | null;
+    hasPublishableKey: boolean;
+  };
+  printHistory: PrintHistoryEntry[];
+  update: UpdateState;
+  showTrayDiscovery: boolean;
 };

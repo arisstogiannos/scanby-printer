@@ -1,17 +1,26 @@
 import appIcon from "@resources/icon.png";
-import { useCallback, useEffect, useState } from "react";
-import type { RendererAppState } from "@/preload/index";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { APP_STATE_FALLBACK_POLL_MS } from "@/shared/constants";
+import type { RendererAppState } from "@/shared/types";
+import { PairingSuccessBanner } from "./components/pairing-success-banner";
 import { PrintHistory } from "./components/print-history";
 import { PrinterActions } from "./components/printer-actions";
 import { PrinterSetup } from "./components/printer-setup";
+import { SettingsPanel } from "./components/settings-panel";
+import { TrayDiscoveryPrompt } from "./components/tray-discovery-prompt";
+import { UpdateBanner } from "./components/update-banner";
 import { VenueStatus } from "./components/venue-status";
 import { WaitingPair } from "./components/waiting-pair";
-
-const POLL_MS = 1500;
 
 export function App() {
   const [state, setState] = useState<RendererAppState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trayPromptDismissed, setTrayPromptDismissed] = useState(false);
+  const [hidingToTray, setHidingToTray] = useState(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [pairingBanner, setPairingBanner] = useState<string | null>(null);
+  const wasPairedRef = useRef<boolean | null>(null);
+  const printerSetupRef = useRef<HTMLElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -25,11 +34,82 @@ export function App() {
 
   useEffect(() => {
     void refresh();
+
+    const unsubscribe = window.scanbyPrint.onAppStateChange((next) => {
+      setState(next);
+      setError(null);
+    });
+
     const interval = setInterval(() => {
       void refresh();
-    }, POLL_MS);
-    return () => clearInterval(interval);
+    }, APP_STATE_FALLBACK_POLL_MS);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, [refresh]);
+
+  const paired = state?.paired;
+  const businessName = state?.businessName;
+
+  useEffect(() => {
+    if (paired === undefined) {
+      return;
+    }
+
+    if (wasPairedRef.current === null) {
+      wasPairedRef.current = paired;
+      return;
+    }
+
+    if (paired && !wasPairedRef.current) {
+      setPairingBanner(businessName ?? "Your venue");
+      requestAnimationFrame(() => {
+        printerSetupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+
+    wasPairedRef.current = paired;
+
+    if (!paired) {
+      setPairingBanner(null);
+    }
+  }, [paired, businessName]);
+
+  useEffect(() => {
+    if (!pairingBanner) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setPairingBanner(null);
+    }, 8_000);
+
+    return () => clearTimeout(timer);
+  }, [pairingBanner]);
+
+  async function handleHideToTray() {
+    setHidingToTray(true);
+    try {
+      await window.scanbyPrint.hideToTray();
+      setTrayPromptDismissed(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not hide to tray");
+    } finally {
+      setHidingToTray(false);
+    }
+  }
+
+  async function handleInstallUpdate() {
+    setInstallingUpdate(true);
+    try {
+      await window.scanbyPrint.installUpdate();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not install update");
+      setInstallingUpdate(false);
+    }
+  }
 
   if (!state) {
     return (
@@ -49,8 +129,10 @@ export function App() {
         ? "printer-setup"
         : "waiting-pair";
 
+  const showTrayPrompt = state.showTrayDiscovery && !trayPromptDismissed && stage === "complete";
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 bg-zinc-950 p-6">
+    <main className="relative mx-auto flex min-h-screen max-w-md flex-col gap-5 bg-zinc-950 p-6">
       <header className="flex items-center gap-4">
         <div className="relative">
           <img src={appIcon} alt="" className="size-12 rounded-xl ring-1 ring-zinc-800" />
@@ -64,47 +146,74 @@ export function App() {
         </div>
       </header>
 
+      <UpdateBanner
+        update={state.update}
+        onInstall={() => void handleInstallUpdate()}
+        installing={installingUpdate}
+      />
+
       {error ? (
         <p className="rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-red-300 text-sm">
           {error}
         </p>
       ) : null}
 
+      {pairingBanner && stage === "printer-setup" ? (
+        <PairingSuccessBanner venueName={pairingBanner} />
+      ) : null}
+
       {stage === "waiting-pair" ? <WaitingPair /> : null}
 
       {stage === "printer-setup" ? (
-        <PrinterSetup
-          businessName={state.businessName ?? "Your venue"}
-          onSaved={refresh}
-          onUnpaired={refresh}
-        />
-      ) : null}
-
-      {stage === "complete" ? (
-        <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <div>
-            <p className="font-medium text-primary">Running in system tray</p>
-            <p className="mt-1 text-sm text-zinc-500">
-              New orders print automatically. You can close this window.
-            </p>
-          </div>
-          <VenueStatus
+        <section ref={printerSetupRef}>
+          <PrinterSetup
             businessName={state.businessName ?? "Your venue"}
-            printerIp={state.printerIp}
-            printerStatus={state.printerStatus}
-          />
-          <PrinterActions
-            printerIp={state.printerIp}
             printerStatus={state.printerStatus}
             pendingPrinterPicker={state.pendingPrinterPicker}
-            onUpdated={refresh}
+            lastScan={state.lastScan}
+            onSaved={refresh}
+            onUnpaired={refresh}
           />
         </section>
       ) : null}
 
-      {state.paired ? <PrintHistory entries={state.printHistory} /> : null}
+      {stage === "complete" ? (
+        <>
+          <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+            <div>
+              <p className="font-medium text-primary">Running in system tray</p>
+              <p className="mt-1 text-sm text-zinc-500">
+                New orders print automatically. You can close this window.
+              </p>
+            </div>
+            <VenueStatus
+              businessName={state.businessName ?? "Your venue"}
+              printerIp={state.printerIp}
+              printerStatus={state.printerStatus}
+            />
+            <PrinterActions
+              printerIp={state.printerIp}
+              printerStatus={state.printerStatus}
+              pendingPrinterPicker={state.pendingPrinterPicker}
+              lastScan={state.lastScan}
+              onUpdated={refresh}
+            />
+          </section>
+          <SettingsPanel update={state.update} onUpdated={refresh} />
+        </>
+      ) : null}
+
+      {state.paired ? <PrintHistory entries={state.printHistory} onRetry={refresh} /> : null}
 
       <footer className="mt-auto pt-2 text-center text-xs text-zinc-600">v{state.version}</footer>
+
+      {showTrayPrompt ? (
+        <TrayDiscoveryPrompt
+          onOpenSettings={() => setTrayPromptDismissed(true)}
+          onHideToTray={() => void handleHideToTray()}
+          hiding={hidingToTray}
+        />
+      ) : null}
     </main>
   );
 }

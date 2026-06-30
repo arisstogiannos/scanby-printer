@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AUTO_SAVE_CANCEL_MS } from "@/shared/constants";
+import type { PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
 
 type PrinterSetupProps = {
   businessName: string;
+  printerStatus: PrinterStatus;
+  pendingPrinterPicker: string[] | null;
+  lastScan: PrinterScanSnapshot | null;
   onSaved: () => void;
   onUnpaired: () => void;
 };
 
 type SelectionMode = "scanned" | "manual";
 
-export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetupProps) {
+export function PrinterSetup({
+  businessName,
+  printerStatus,
+  pendingPrinterPicker,
+  lastScan,
+  onSaved,
+  onUnpaired,
+}: PrinterSetupProps) {
   const [printers, setPrinters] = useState<string[]>([]);
   const [subnet, setSubnet] = useState<string | null>(null);
   const [selectedIp, setSelectedIp] = useState("");
@@ -26,6 +37,9 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
   const autoPipelineIpRef = useRef<string | null>(null);
 
   const activeIp = mode === "manual" ? manualIp.trim() : selectedIp;
+  const isScanning = scanning;
+  const isExternalScan = printerStatus === "scanning" && !scanning;
+  const scanBusy = isScanning || isExternalScan;
 
   const clearAutoSaveTimer = useCallback((): void => {
     if (autoSaveTimerRef.current) {
@@ -81,6 +95,30 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
     [onSaved, clearAutoSaveTimer],
   );
 
+  const applyScanResult = useCallback(
+    (foundPrinters: string[], scanSubnet: string | null) => {
+      setPrinters(foundPrinters);
+      setSubnet(scanSubnet);
+
+      if (foundPrinters.length === 1) {
+        const ip = foundPrinters[0];
+        setSelectedIp(ip);
+        setMode("scanned");
+        if (!autoPipelineIpRef.current) {
+          setMessage("One printer found — running test print…");
+          void runSmartPipeline(ip);
+        }
+      } else if (foundPrinters.length === 0) {
+        setMode("manual");
+        setMessage("No printers found. Enter IP manually or rescan.");
+      } else {
+        setSelectedIp(foundPrinters[0]);
+        setMessage(`Found ${foundPrinters.length} printers. Pick one or rescan.`);
+      }
+    },
+    [runSmartPipeline],
+  );
+
   const runScan = useCallback(async () => {
     setScanning(true);
     setError(null);
@@ -90,33 +128,37 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
 
     try {
       const result = await window.scanbyPrint.scanPrinters();
-      setPrinters(result.printers);
-      setSubnet(result.subnet ?? null);
-
-      if (result.printers.length === 1) {
-        const ip = result.printers[0];
-        setSelectedIp(ip);
-        setMode("scanned");
-        setMessage("One printer found — running test print…");
-        void runSmartPipeline(ip);
-      } else if (result.printers.length === 0) {
-        setMode("manual");
-        setMessage("No printers found. Enter IP manually or rescan.");
-      } else {
-        setSelectedIp(result.printers[0]);
-        setMessage(`Found ${result.printers.length} printers. Pick one or rescan.`);
-      }
+      applyScanResult(result.printers, result.subnet ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scan failed");
     } finally {
       setScanning(false);
     }
-  }, [runSmartPipeline, clearAutoSaveTimer]);
+  }, [applyScanResult, clearAutoSaveTimer]);
 
   useEffect(() => {
-    void runScan();
+    const hasRecentScan =
+      lastScan && Date.now() - new Date(lastScan.completedAt).getTime() < 30_000;
+
+    if (!hasRecentScan) {
+      void runScan();
+    }
+  }, [runScan, lastScan]);
+
+  useEffect(() => {
     return () => clearAutoSaveTimer();
-  }, [runScan, clearAutoSaveTimer]);
+  }, [clearAutoSaveTimer]);
+
+  useEffect(() => {
+    if (pendingPrinterPicker && pendingPrinterPicker.length > 0) {
+      applyScanResult(pendingPrinterPicker, lastScan?.subnet ?? null);
+      return;
+    }
+
+    if (lastScan && printers.length === 0) {
+      applyScanResult(lastScan.printers, lastScan.subnet);
+    }
+  }, [pendingPrinterPicker, lastScan, printers.length, applyScanResult]);
 
   async function handleTestPrint() {
     if (!activeIp) {
@@ -200,13 +242,34 @@ export function PrinterSetup({ businessName, onSaved, onUnpaired }: PrinterSetup
         <button
           type="button"
           onClick={() => void runScan()}
-          disabled={scanning || testing || saving}
+          disabled={scanBusy || testing || saving}
           className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-2 text-sm transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
         >
-          {scanning ? "Scanning..." : "Rescan network"}
+          {scanBusy ? "Scanning..." : "Rescan network"}
         </button>
         {subnet ? <span className="text-xs text-zinc-500">Subnet {subnet}.x</span> : null}
       </div>
+
+      {isScanning && !testing && !saving ? (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">
+          <span className="size-2 animate-pulse rounded-full bg-amber-400" />
+          <p className="text-amber-200 text-sm">Scanning local network for printers…</p>
+        </div>
+      ) : null}
+
+      {isExternalScan && !testing && !saving ? (
+        <p className="text-xs text-zinc-500">Background scan in progress…</p>
+      ) : null}
+
+      {lastScan && !scanBusy ? (
+        <p className="text-xs text-zinc-500">
+          Last scan {new Date(lastScan.completedAt).toLocaleTimeString()}
+          {lastScan.subnet ? ` · subnet ${lastScan.subnet}.x` : ""}
+          {lastScan.printers.length === 0
+            ? " · no printers found"
+            : ` · ${lastScan.printers.length} found`}
+        </p>
+      ) : null}
 
       {printers.length > 0 ? (
         <fieldset className="space-y-2">

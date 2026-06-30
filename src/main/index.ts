@@ -3,6 +3,7 @@ import log from "electron-log";
 
 import { initAutoUpdater } from "@/main/auto-updater";
 import { registerIpcHandlers } from "@/main/ipc/handlers";
+import { initStateBroadcaster } from "@/main/ipc/state-broadcaster";
 import {
   bootstrapServices,
   configureLogging,
@@ -22,6 +23,7 @@ if (!gotLock) {
   configureLogging();
   registerProtocolHandler();
   registerIpcHandlers();
+  initStateBroadcaster();
 
   app.on("second-instance", (_event, argv) => {
     const protocolUrl = argv.find((arg) => arg.startsWith("scanby://"));

@@ -32,6 +32,11 @@ export async function runPrinterScan(): Promise<PrinterScanResult> {
     try {
       const subnet = getLocalSubnet();
       const printers = await scanForPrinters(subnet);
+      appState.setLastScan({
+        printers,
+        subnet,
+        completedAt: new Date().toISOString(),
+      });
       await refreshPrinterStatusFromConfig();
       log.info(`Printer scan found ${printers.length} device(s) on subnet ${subnet ?? "unknown"}`);
       return { printers, subnet };

@@ -1,28 +1,21 @@
-import { app, ipcMain } from "electron";
+import { ipcMain } from "electron";
 import log from "electron-log";
+import { buildRendererAppState } from "@/main/ipc/renderer-state";
 import { hideSetupWindow, showSetupWindow } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
-import { getConfig, getSafeConfigSummary, isConfigured, isPaired } from "@/services/config-store";
-import { getPrintHistory, recordPrint } from "@/services/print-history-store";
+import { getConfig, getSafeConfigSummary } from "@/services/config-store";
+import { showPostSetupTrayDiscovery } from "@/services/post-setup-tray";
+import { findEntryById, recordPrint } from "@/services/print-history-store";
+import { printQueue } from "@/services/print-queue";
 import { connectToPrinter, reconnectPrinter } from "@/services/printer-connection";
 import { probePrinter } from "@/services/printer-discovery";
 import { runPrinterScan } from "@/services/printer-scan-service";
 import { testPrint } from "@/services/printer-service";
 import { unpairApp } from "@/services/unpair";
+import { checkForUpdates, getUpdateState, quitAndInstallUpdate } from "@/services/update-state";
 
 export function registerIpcHandlers(): void {
-  ipcMain.handle("app:get-state", () => {
-    const config = getConfig();
-    return {
-      ...appState.getSnapshot(),
-      version: app.getVersion(),
-      setupStage: appState.getSetupStage(),
-      paired: isPaired(),
-      configured: isConfigured(),
-      configSummary: getSafeConfigSummary(),
-      printHistory: isPaired() ? getPrintHistory(config?.businessId) : [],
-    };
-  });
+  ipcMain.handle("app:get-state", () => buildRendererAppState());
 
   ipcMain.handle("app:get-config-summary", () => {
     return getSafeConfigSummary();
@@ -90,7 +83,6 @@ export function registerIpcHandlers(): void {
       throw new Error("Invalid IP");
     }
     await connectToPrinter(ip);
-    hideSetupWindow();
     return { ok: true };
   });
 
@@ -133,6 +125,39 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("app:unpair", async () => {
     await unpairApp();
     showSetupWindow();
+    return { ok: true };
+  });
+
+  ipcMain.handle("app:hide-to-tray", () => {
+    showPostSetupTrayDiscovery();
+    hideSetupWindow();
+    return { ok: true };
+  });
+
+  ipcMain.handle("print:retry", (_event, entryId: string) => {
+    if (typeof entryId !== "string" || !entryId.trim()) {
+      throw new Error("Invalid entry ID");
+    }
+
+    const entry = findEntryById(entryId.trim());
+    if (!entry?.payload) {
+      throw new Error("Cannot retry — order data missing");
+    }
+
+    const queued = printQueue.enqueue(entry.payload, {
+      source: "manual",
+      event: "order_updated",
+    });
+
+    return { ok: queued };
+  });
+
+  ipcMain.handle("update:check", async () => checkForUpdates());
+
+  ipcMain.handle("update:get-state", () => getUpdateState());
+
+  ipcMain.handle("update:install", () => {
+    quitAndInstallUpdate();
     return { ok: true };
   });
 }

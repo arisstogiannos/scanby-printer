@@ -15,6 +15,7 @@ import {
   startPrinterReconnectMonitor,
 } from "@/services/printer-reconnect";
 import { restartSupabaseListener, shutdownSupabaseListener } from "@/services/supabase-listener";
+import { initUserPreferences } from "@/services/user-preferences";
 
 export function configureLogging(): void {
   log.transports.file.resolvePathFn = () => join(app.getPath("userData"), "logs", "main.log");
@@ -27,6 +28,7 @@ export async function bootstrapServices(): Promise<void> {
   initConfigStore(userDataPath);
   initPrintHistoryStore(userDataPath);
   initPendingPrintQueueStore(userDataPath);
+  initUserPreferences(userDataPath);
   initAutoLaunch();
 
   await startLocalServer();

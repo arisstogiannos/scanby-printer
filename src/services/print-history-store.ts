@@ -13,6 +13,20 @@ const MAX_ENTRIES = 10;
 
 let userDataPath = "";
 let entries: PrintHistoryEntry[] = [];
+const changeListeners = new Set<() => void>();
+
+function emitChange(): void {
+  for (const listener of changeListeners) {
+    listener();
+  }
+}
+
+export function onPrintHistoryChange(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => {
+    changeListeners.delete(listener);
+  };
+}
 
 type RecordPrintParams = {
   orderId: string;
@@ -145,6 +159,7 @@ export function updatePrintStatus(
   }
 
   saveToDisk();
+  emitChange();
   return entry;
 }
 
@@ -163,7 +178,12 @@ export function recordPrint(params: RecordPrintParams): PrintHistoryEntry {
   }
 
   saveToDisk();
+  emitChange();
   return entry;
+}
+
+export function findEntryById(entryId: string): PrintHistoryEntry | null {
+  return entries.find((entry) => entry.id === entryId) ?? null;
 }
 
 export function findLatestOrderById(orderId: string): PrintOrder | null {
@@ -192,6 +212,7 @@ export function retainHistoryForBusiness(businessId: string): void {
   entries = entries.filter((entry) => entry.businessId === businessId);
   if (entries.length !== before) {
     saveToDisk();
+    emitChange();
   }
 }
 
@@ -205,4 +226,5 @@ export function clearPrintHistory(): void {
   if (existsSync(historyPath)) {
     unlinkSync(historyPath);
   }
+  emitChange();
 }

@@ -120,3 +120,7 @@ export function destroyTray(): void {
 export function refreshTray(): void {
   updateTrayIcon();
 }
+
+export function getTrayInstance(): Tray | null {
+  return tray;
+}

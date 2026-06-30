@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { PrinterStatus } from "@/shared/types";
+import type { PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
 
 type PrinterActionsProps = {
   printerIp: string | null;
   printerStatus: PrinterStatus;
   pendingPrinterPicker: string[] | null;
+  lastScan: PrinterScanSnapshot | null;
   onUpdated: () => void;
 };
 
@@ -12,6 +13,7 @@ export function PrinterActions({
   printerIp,
   printerStatus,
   pendingPrinterPicker,
+  lastScan,
   onUpdated,
 }: PrinterActionsProps) {
   const [reconnecting, setReconnecting] = useState(false);
@@ -135,6 +137,23 @@ export function PrinterActions({
         <p className="text-xs text-zinc-500">
           Printer offline. Reconnect checks the saved IP. Rescan searches the local network.
         </p>
+      ) : null}
+
+      {lastScan && printerStatus !== "scanning" && !scanning ? (
+        <p className="text-xs text-zinc-500">
+          Last scan {new Date(lastScan.completedAt).toLocaleTimeString()}
+          {lastScan.subnet ? ` · subnet ${lastScan.subnet}.x` : ""}
+          {lastScan.printers.length === 0
+            ? " · no printers found"
+            : ` · ${lastScan.printers.length} found`}
+        </p>
+      ) : null}
+
+      {printerStatus === "scanning" && !scanning ? (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">
+          <span className="size-2 animate-pulse rounded-full bg-amber-400" />
+          <p className="text-amber-200 text-sm">Auto-scanning network for printer…</p>
+        </div>
       ) : null}
 
       {message ? (

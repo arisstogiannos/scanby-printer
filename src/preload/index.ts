@@ -1,22 +1,19 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppStateSnapshot, PrintHistoryEntry } from "@/shared/types";
+import type { RendererAppState, UpdateState } from "@/shared/types";
 
-export type RendererAppState = AppStateSnapshot & {
-  version: string;
-  setupStage: "waiting-pair" | "printer-setup" | "complete";
-  paired: boolean;
-  configured: boolean;
-  configSummary: {
-    businessId: string | null;
-    businessName: string | null;
-    printerIp: string | null;
-    hasPublishableKey: boolean;
-  };
-  printHistory: PrintHistoryEntry[];
-};
+export type { RendererAppState };
 
 const api = {
   getAppState: (): Promise<RendererAppState> => ipcRenderer.invoke("app:get-state"),
+  onAppStateChange: (callback: (state: RendererAppState) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: RendererAppState) => {
+      callback(state);
+    };
+    ipcRenderer.on("app:state-changed", listener);
+    return () => {
+      ipcRenderer.removeListener("app:state-changed", listener);
+    };
+  },
   scanPrinters: (): Promise<{ printers: string[]; subnet: string | null }> =>
     ipcRenderer.invoke("printer:scan"),
   probePrinter: (ip: string): Promise<boolean> => ipcRenderer.invoke("printer:probe", ip),
@@ -29,6 +26,11 @@ const api = {
   clearPendingPrinterPicker: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("printer:clear-picker"),
   unpair: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("app:unpair"),
+  hideToTray: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("app:hide-to-tray"),
+  retryPrint: (entryId: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("print:retry", entryId),
+  checkForUpdates: (): Promise<UpdateState> => ipcRenderer.invoke("update:check"),
+  installUpdate: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("update:install"),
 };
 
 contextBridge.exposeInMainWorld("scanbyPrint", api);

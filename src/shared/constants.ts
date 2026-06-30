@@ -31,3 +31,7 @@ export const AUTO_RESCAN_AFTER_FAILED_PROBES = 3;
 export const HEALTH_MONITOR_INTERVAL_MS = 5 * 60 * 1000;
 export const HEALTH_UNHEALTHY_THRESHOLD = 2;
 export const AUTO_SAVE_CANCEL_MS = 5_000;
+export const APP_STATE_FALLBACK_POLL_MS = 30_000;
+export const TRAY_PULSE_DURATION_MS = 3_000;
+export const TRAY_FAILURE_FLASH_MS = 2_000;
+export const DOWNLOAD_PAGE_URL = "https://github.com/arisstogiannos/scanby-printer/releases";
