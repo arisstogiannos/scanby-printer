@@ -2,14 +2,14 @@ import appIcon from "@resources/icon.png";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { APP_STATE_FALLBACK_POLL_MS } from "@/shared/constants";
 import type { RendererAppState } from "@/shared/types";
+import { BusinessCard } from "./components/business-card";
 import { PairingSuccessBanner } from "./components/pairing-success-banner";
 import { PrintHistory } from "./components/print-history";
-import { PrinterActions } from "./components/printer-actions";
+import { PrinterCard } from "./components/printer-card";
 import { PrinterSetup } from "./components/printer-setup";
 import { SettingsPanel } from "./components/settings-panel";
 import { TrayDiscoveryPrompt } from "./components/tray-discovery-prompt";
 import { UpdateBanner } from "./components/update-banner";
-import { VenueStatus } from "./components/venue-status";
 import { WaitingPair } from "./components/waiting-pair";
 
 export function App() {
@@ -179,26 +179,14 @@ export function App() {
 
       {stage === "complete" ? (
         <>
-          <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-            <div>
-              <p className="font-medium text-primary">Running in system tray</p>
-              <p className="mt-1 text-sm text-zinc-500">
-                New orders print automatically. You can close this window.
-              </p>
-            </div>
-            <VenueStatus
-              businessName={state.businessName ?? "Your venue"}
-              printerIp={state.printerIp}
-              printerStatus={state.printerStatus}
-            />
-            <PrinterActions
-              printerIp={state.printerIp}
-              printerStatus={state.printerStatus}
-              pendingPrinterPicker={state.pendingPrinterPicker}
-              lastScan={state.lastScan}
-              onUpdated={refresh}
-            />
-          </section>
+          <BusinessCard businessName={state.businessName ?? "Your venue"} />
+          <PrinterCard
+            printerIp={state.printerIp}
+            printerStatus={state.printerStatus}
+            pendingPrinterPicker={state.pendingPrinterPicker}
+            lastScan={state.lastScan}
+            onUpdated={refresh}
+          />
           <SettingsPanel update={state.update} onUpdated={refresh} />
         </>
       ) : null}

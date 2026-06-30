@@ -1,0 +1,29 @@
+type BusinessCardProps = {
+  businessName: string;
+};
+
+export function BusinessCard({ businessName }: BusinessCardProps) {
+  return (
+    <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div>
+        <h2 className="font-medium text-sm text-zinc-200">Business</h2>
+        <p className="mt-0.5 text-xs text-zinc-500">Venue linked to this device</p>
+      </div>
+
+      <div>
+        <p className="font-medium text-primary">Running in system tray</p>
+        <p className="mt-1 text-sm text-zinc-500">
+          New orders print automatically. You can close this window.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+        <span className="size-2.5 shrink-0 rounded-full bg-primary" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-base text-zinc-100">{businessName}</p>
+          <p className="mt-0.5 text-xs text-primary">Linked and receiving orders</p>
+        </div>
+      </div>
+    </section>
+  );
+}
