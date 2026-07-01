@@ -5,12 +5,13 @@ type UpdateBannerProps = {
   update: UpdateState;
   onInstall: () => void;
   installing: boolean;
+  hidden?: boolean;
 };
 
-export function UpdateBanner({ update, onInstall, installing }: UpdateBannerProps) {
+export function UpdateBanner({ update, onInstall, installing, hidden }: UpdateBannerProps) {
   const { t } = useTranslation();
 
-  if (update.status !== "ready" || !update.version) {
+  if (hidden || update.status !== "ready" || !update.version) {
     return null;
   }
 

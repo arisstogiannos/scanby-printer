@@ -38,6 +38,19 @@ export function SettingsPanel({ update, locale, onUpdated }: SettingsPanelProps)
         return;
       }
 
+      if (next.status === "downloading") {
+        setMessage(
+          next.version
+            ? t("settings.updateDownloading", { version: next.version })
+            : t("settings.updateInProgress"),
+        );
+        return;
+      }
+
+      if (next.status === "checking") {
+        return;
+      }
+
       if (next.status === "error") {
         setError(next.error ?? t("errors.updateCheckFailed"));
         return;

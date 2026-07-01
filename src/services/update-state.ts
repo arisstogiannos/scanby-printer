@@ -2,6 +2,7 @@ import { app } from "electron";
 import log from "electron-log";
 import electronUpdater from "electron-updater";
 import { broadcastAppState } from "@/main/ipc/state-broadcaster";
+import { surfaceWindowForUpdateReady } from "@/services/update-ready-prompt";
 import type { UpdateState } from "@/shared/types";
 
 const { autoUpdater } = electronUpdater;
@@ -93,13 +94,18 @@ export function initAutoUpdater(): void {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    log.info("Update downloaded", info.version);
+    const version = info.version ?? null;
+    log.info("Update downloaded", version);
     setState({
       status: "ready",
-      version: info.version ?? null,
+      version,
       lastCheckedAt: new Date().toISOString(),
       error: null,
     });
+
+    if (version) {
+      surfaceWindowForUpdateReady(version);
+    }
   });
 
   autoUpdater.on("download-progress", (progress) => {
@@ -113,6 +119,36 @@ export function initAutoUpdater(): void {
   void checkForUpdates();
 }
 
+function syncStateFromCheckResult(isUpdateAvailable: boolean, version: string | null): void {
+  const current = getUpdateState();
+  const checkedAt = new Date().toISOString();
+
+  if (
+    current.status === "ready" ||
+    current.status === "downloading" ||
+    current.status === "checking"
+  ) {
+    return;
+  }
+
+  if (isUpdateAvailable) {
+    setState({
+      status: "downloading",
+      version,
+      lastCheckedAt: checkedAt,
+      error: null,
+    });
+    return;
+  }
+
+  setState({
+    status: "idle",
+    version: null,
+    lastCheckedAt: checkedAt,
+    error: null,
+  });
+}
+
 export async function checkForUpdates(): Promise<UpdateState> {
   if (!app.isPackaged || process.windowsStore) {
     setState({
@@ -122,9 +158,29 @@ export async function checkForUpdates(): Promise<UpdateState> {
     return getUpdateState();
   }
 
+  const current = getUpdateState();
+  if (
+    current.status === "ready" ||
+    current.status === "downloading" ||
+    current.status === "checking"
+  ) {
+    setState({ lastCheckedAt: new Date().toISOString(), error: null });
+    return getUpdateState();
+  }
+
   try {
     setState({ status: "checking", error: null });
-    await autoUpdater.checkForUpdates();
+    const result = await autoUpdater.checkForUpdates();
+
+    if (result) {
+      syncStateFromCheckResult(result.isUpdateAvailable, result.updateInfo.version ?? null);
+    } else if (getUpdateState().status === "checking") {
+      setState({
+        status: "idle",
+        lastCheckedAt: new Date().toISOString(),
+        error: null,
+      });
+    }
   } catch (error) {
     log.error("Failed to check for updates", error);
     setState({

@@ -12,6 +12,7 @@ import { PrinterSetup } from "./components/printer-setup";
 import { SettingsPanel } from "./components/settings-panel";
 import { TrayDiscoveryPrompt } from "./components/tray-discovery-prompt";
 import { UpdateBanner } from "./components/update-banner";
+import { UpdatePrompt } from "./components/update-prompt";
 import { WaitingPair } from "./components/waiting-pair";
 import { I18nProvider } from "./i18n-provider";
 import { translateError } from "./translate-error";
@@ -54,6 +55,7 @@ function AppContent({ state, onRefresh }: AppContentProps) {
   const [trayPromptDismissed, setTrayPromptDismissed] = useState(false);
   const [hidingToTray, setHidingToTray] = useState(false);
   const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(null);
   const [pairingBanner, setPairingBanner] = useState<string | null>(null);
   const wasPairedRef = useRef<boolean | null>(null);
   const printerSetupRef = useRef<HTMLElement>(null);
@@ -126,7 +128,14 @@ function AppContent({ state, onRefresh }: AppContentProps) {
         ? "printer-setup"
         : "waiting-pair";
 
-  const showTrayPrompt = state.showTrayDiscovery && !trayPromptDismissed && stage === "complete";
+  const showUpdatePrompt = Boolean(
+    state.update.status === "ready" &&
+      state.update.version &&
+      dismissedUpdateVersion !== state.update.version,
+  );
+
+  const showTrayPrompt =
+    state.showTrayDiscovery && !trayPromptDismissed && stage === "complete" && !showUpdatePrompt;
 
   return (
     <main className="relative mx-auto flex min-h-screen max-w-md flex-col gap-5 bg-zinc-950 p-6">
@@ -147,6 +156,7 @@ function AppContent({ state, onRefresh }: AppContentProps) {
         update={state.update}
         onInstall={() => void handleInstallUpdate()}
         installing={installingUpdate}
+        hidden={showUpdatePrompt}
       />
 
       {error ? (
@@ -202,6 +212,20 @@ function AppContent({ state, onRefresh }: AppContentProps) {
       ) : null}
 
       <footer className="mt-auto pt-2 text-center text-xs text-zinc-600">v{state.version}</footer>
+
+      {showUpdatePrompt && state.update.version ? (
+        <UpdatePrompt
+          version={state.update.version}
+          onInstall={() => void handleInstallUpdate()}
+          onLater={() => {
+            if (state.update.version) {
+              setDismissedUpdateVersion(state.update.version);
+            }
+          }}
+          installing={installingUpdate}
+          isStoreBuild={state.update.isStoreBuild}
+        />
+      ) : null}
 
       {showTrayPrompt ? (
         <TrayDiscoveryPrompt

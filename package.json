@@ -1,6 +1,6 @@
 {
   "name": "scanby-print-service",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "Scanby kitchen ticket print service for network thermal printers",
   "main": "./out/main/index.js",
   "type": "module",

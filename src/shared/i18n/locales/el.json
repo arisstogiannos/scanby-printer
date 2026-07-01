@@ -139,12 +139,19 @@
     "downloadGithub": "λήψη τελευταίας από GitHub",
     "storeUpdates": "Οι εκδόσεις Microsoft Store ενημερώνονται μέσω του Store.",
     "updateReady": "Η ενημέρωση {{version}} είναι έτοιμη για εγκατάσταση.",
+    "updateDownloading": "Λήψη ενημέρωσης {{version}}…",
+    "updateInProgress": "Λήψη ενημέρωσης σε εξέλιξη.",
     "latestVersion": "Έχετε την τελευταία έκδοση."
   },
   "update": {
     "ready": "Η ενημέρωση <1>{{version}}</1> είναι έτοιμη — επανεκκίνηση για εγκατάσταση",
     "restartToInstall": "Επανεκκίνηση για εγκατάσταση",
     "restarting": "Επανεκκίνηση..."
+  },
+  "updatePrompt": {
+    "title": "Διαθέσιμη ενημέρωση",
+    "body": "Η έκδοση <1>{{version}}</1> είναι έτοιμη. Επανεκκινήστε τώρα για τις τελευταίες βελτιώσεις.",
+    "later": "Αργότερα"
   },
   "tray": {
     "appName": "Scanby Print Service",
@@ -188,7 +195,9 @@
     "unknownIp": "άγνωστη IP",
     "channelDisconnected": "Το κανάλι παραγγελιών αποσυνδέθηκε",
     "channelDisconnectedBody": "Το Scanby δεν λαμβάνει ζωντανές παραγγελίες. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο.",
-    "orderFailed": "Η παραγγελία #{{number}} απέτυχε"
+    "orderFailed": "Η παραγγελία #{{number}} απέτυχε",
+    "updateReady": "Ενημέρωση έτοιμη",
+    "updateReadyBody": "Η έκδοση {{version}} είναι έτοιμη. Επανεκκινήστε για εγκατάσταση."
   },
   "tickets": {
     "appName": "Scanby Print Service",

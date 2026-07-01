@@ -139,12 +139,19 @@
     "downloadGithub": "download latest from GitHub",
     "storeUpdates": "Microsoft Store builds update through the Store.",
     "updateReady": "Update {{version}} is ready to install.",
+    "updateDownloading": "Downloading update {{version}}…",
+    "updateInProgress": "Update download in progress.",
     "latestVersion": "You're on the latest version."
   },
   "update": {
     "ready": "Update <1>{{version}}</1> ready — restart to install",
     "restartToInstall": "Restart to install",
     "restarting": "Restarting..."
+  },
+  "updatePrompt": {
+    "title": "Update available",
+    "body": "Version <1>{{version}}</1> is ready. Restart now to get the latest fixes and features.",
+    "later": "Later"
   },
   "tray": {
     "appName": "Scanby Print Service",
@@ -188,7 +195,9 @@
     "unknownIp": "unknown IP",
     "channelDisconnected": "Order channel disconnected",
     "channelDisconnectedBody": "Scanby is not receiving live orders. Check your internet connection.",
-    "orderFailed": "Order #{{number}} failed"
+    "orderFailed": "Order #{{number}} failed",
+    "updateReady": "Update ready",
+    "updateReadyBody": "Version {{version}} is ready. Restart to install."
   },
   "tickets": {
     "appName": "Scanby Print Service",
