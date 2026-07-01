@@ -179,7 +179,16 @@ export function App() {
 
       {stage === "complete" ? (
         <>
-          <BusinessCard businessName={state.businessName ?? "Your venue"} />
+          <div className="space-y-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+            <p className="font-medium text-primary">Running in system tray</p>
+            <p className="text-sm text-zinc-500">
+              New orders print automatically. You can close this window.
+            </p>
+          </div>
+          <BusinessCard
+            businessId={state.configSummary.businessId}
+            businessName={state.businessName ?? "Your venue"}
+          />
           <PrinterCard
             printerIp={state.printerIp}
             printerStatus={state.printerStatus}
