@@ -37,11 +37,32 @@ function formatPreferencesNotes(notes?: string): string | undefined {
   return notes.trim();
 }
 
-function formatOrderTotal(totalCents: number): string {
+const TICKET_LINE_WIDTH = 32;
+
+function formatCentsAsEur(totalCents: number): string {
   return new Intl.NumberFormat("el-GR", {
     style: "currency",
     currency: "EUR",
   }).format(totalCents / CENTS_PER_EUR);
+}
+
+function formatItemMainLine(item: PrintOrderItem): string {
+  const left = `${item.quantity}x  ${item.name}`;
+
+  if (
+    item.price === undefined ||
+    !Number.isInteger(item.price) ||
+    item.price < 0 ||
+    !Number.isFinite(item.quantity) ||
+    item.quantity <= 0
+  ) {
+    return left;
+  }
+
+  const lineTotalCents = item.quantity * item.price;
+  const priceText = formatCentsAsEur(lineTotalCents);
+  const padding = Math.max(1, TICKET_LINE_WIDTH - left.length - priceText.length);
+  return `${left}${" ".repeat(padding)}${priceText}`;
 }
 
 function calculateOrderTotalCents(items: PrintOrderItem[]): number | undefined {
@@ -95,12 +116,12 @@ export function buildTicketLines(
     headerLine: EVENT_HEADERS[event],
     tableLine,
     itemLines: order.items.map((item) => ({
-      main: `${item.quantity}x  ${item.name}`,
+      main: formatItemMainLine(item),
       note: formatPreferencesNotes(item.notes),
     })),
     totalLine:
       orderTotalCents !== undefined && event !== "order_cancelled"
-        ? formatOrderTotal(orderTotalCents)
+        ? formatCentsAsEur(orderTotalCents)
         : undefined,
     footerLine: EVENT_FOOTERS[event],
     timeLine,
@@ -122,6 +143,7 @@ async function renderOrder(
   printer.println(headerLine);
   printer.setTextNormal();
   printer.bold(false);
+  printer.setTextDoubleHeight();
   printer.newLine();
 
   printer.bold(true);
@@ -158,6 +180,7 @@ async function renderOrder(
 
   printer.alignCenter();
   printer.println(timeLine);
+  printer.setTextNormal();
   printer.cut();
 }
 
@@ -209,11 +232,13 @@ export async function testPrint(printerIp: string): Promise<void> {
 
   printer.alignCenter();
   printer.bold(true);
+  printer.setTextDoubleHeight();
   printer.println("Scanby Print Service");
   printer.bold(false);
   printer.newLine();
   printer.println("Test print OK");
   printer.println(new Date().toLocaleString("el-GR"));
+  printer.setTextNormal();
   printer.cut();
 
   await runPrinterJob(printerIp, printer, `Test print succeeded on ${printerIp}`);

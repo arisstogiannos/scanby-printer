@@ -21,6 +21,8 @@ function testBuildTicketLines(): void {
   assert.equal(created.headerLine, "ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ");
   assert.equal(created.tableLine, "TABLE 12  #7");
   assert.equal(created.itemLines.length, 2);
+  assert.match(created.itemLines[0].main, /16,00\s*€$/);
+  assert.match(created.itemLines[1].main, /2,50\s*€$/);
   assert.equal(created.itemLines[0].note, "No onion");
   assert.equal(created.showItems, true);
   assert.equal(created.totalLine, "18,50 €");
