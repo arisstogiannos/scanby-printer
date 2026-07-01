@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { buildTicketLines } from "../src/services/printer-service";
 import { PRINT_DEDUPE_MS } from "../src/shared/constants";
+import { initI18n } from "../src/shared/i18n";
 import { normalizePairPayload } from "../src/shared/pair-payload";
 import { normalizePrintOrder } from "../src/shared/print-payload";
 import { normalizePrinterConnectPayload } from "../src/shared/printer-connect-payload";
 
-function testBuildTicketLines(): void {
+async function testBuildTicketLines(): Promise<void> {
+  await initI18n("el");
+
   const order = {
     id: "order-1",
     number: 7,
@@ -17,23 +20,23 @@ function testBuildTicketLines(): void {
     ],
   };
 
-  const created = buildTicketLines(order, "order_created");
+  const created = buildTicketLines(order, "order_created", "el");
   assert.equal(created.headerLine, "ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ");
-  assert.equal(created.tableLine, "TABLE 12  #7");
+  assert.equal(created.tableLine, "ΤΡΑΠΕΖΙ 12  #7");
   assert.equal(created.itemLines.length, 2);
   assert.match(created.itemLines[0].main, /16,00\s*€$/);
   assert.match(created.itemLines[1].main, /2,50\s*€$/);
   assert.equal(created.itemLines[0].note, "No onion");
   assert.equal(created.showItems, true);
-  assert.equal(created.totalLine, "18,50 €");
+  assert.match(created.totalLine ?? "", /18,50\s*€/);
   assert.ok(created.timeLine.length > 0);
 
-  const updated = buildTicketLines(order, "order_updated");
+  const updated = buildTicketLines(order, "order_updated", "el");
   assert.equal(updated.headerLine, "ΕΝΗΜΕΡΩΣΗ");
   assert.equal(updated.footerLine, "ΕΠΑΝΕΚΤΥΠΩΣΗ");
   assert.equal(updated.showItems, true);
 
-  const cancelled = buildTicketLines(order, "order_cancelled");
+  const cancelled = buildTicketLines(order, "order_cancelled", "el");
   assert.equal(cancelled.headerLine, "ΑΚΥΡΩΣΗ");
   assert.equal(cancelled.footerLine, "Η παραγγελία ακυρώθηκε");
   assert.equal(cancelled.showItems, false);
@@ -48,6 +51,7 @@ function testBuildTicketLines(): void {
       items: [{ quantity: 1, name: "Tea" }],
     },
     "order_created",
+    "el",
   );
   assert.equal(noPrices.totalLine, undefined);
 }
@@ -98,7 +102,7 @@ function testPrinterConnectPayload(): void {
   assert.equal(normalizePrinterConnectPayload({ ip: "256.1.1.1" }), null);
 }
 
-testBuildTicketLines();
+await testBuildTicketLines();
 testDashboardPairPayload();
 testDashboardPrintPayload();
 testPrinterConnectPayload();

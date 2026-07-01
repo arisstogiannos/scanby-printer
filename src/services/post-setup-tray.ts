@@ -1,6 +1,7 @@
 import { pulseTrayIcon } from "@/main/tray-effects";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { hasSeenTrayDiscovery, markTrayDiscoverySeen } from "@/services/user-preferences";
+import { t } from "@/shared/i18n";
 
 export function showPostSetupTrayDiscovery(): void {
   if (hasSeenTrayDiscovery()) {
@@ -9,10 +10,7 @@ export function showPostSetupTrayDiscovery(): void {
 
   markTrayDiscoverySeen();
 
-  showTrayNotification(
-    "Scanby is running in the tray",
-    "Near the clock. Click the tray icon to reopen.",
-  );
+  showTrayNotification(t("notifications.runningInTray"), t("notifications.runningInTrayBody"));
 
   pulseTrayIcon();
 }

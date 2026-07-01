@@ -1,11 +1,15 @@
 import { useState } from "react";
-import type { PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
+import { useTranslation } from "react-i18next";
+import type { Locale, PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
+import { translateError } from "../translate-error";
+import { useFormatDate } from "../use-format-date";
 
 type PrinterActionsProps = {
   printerIp: string | null;
   printerStatus: PrinterStatus;
   pendingPrinterPicker: string[] | null;
   lastScan: PrinterScanSnapshot | null;
+  locale: Locale;
   onUpdated: () => void;
 };
 
@@ -14,8 +18,11 @@ export function PrinterActions({
   printerStatus,
   pendingPrinterPicker,
   lastScan,
+  locale,
   onUpdated,
 }: PrinterActionsProps) {
+  const { t } = useTranslation();
+  const { formatTimeOnly } = useFormatDate(locale);
   const [reconnecting, setReconnecting] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [switchingIp, setSwitchingIp] = useState<string | null>(null);
@@ -37,16 +44,14 @@ export function PrinterActions({
       onUpdated();
 
       if (result.online) {
-        setMessage(`Printer ${result.ip} is back online.`);
+        setMessage(t("printer.backOnline", { ip: result.ip }));
       } else {
         setError(
-          result.ip
-            ? `Printer ${result.ip} is still unreachable. Try rescan if the IP changed.`
-            : "No printer IP saved.",
+          result.ip ? t("printer.stillUnreachable", { ip: result.ip }) : t("printer.noIpSaved"),
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Reconnect failed");
+      setError(translateError(e, t) || t("errors.reconnectFailed"));
     } finally {
       setReconnecting(false);
     }
@@ -64,22 +69,25 @@ export function PrinterActions({
       onUpdated();
 
       if (result.printers.length === 0) {
-        setError("No printers found on your network.");
+        setError(t("printer.noPrintersOnNetwork"));
         return;
       }
 
       if (printerIp && result.printers.includes(printerIp)) {
-        setMessage(`Found saved printer at ${printerIp}.`);
+        setMessage(t("printer.foundSavedPrinter", { ip: printerIp }));
         return;
       }
 
       setMessage(
         result.printers.length === 1
-          ? `Found 1 printer at ${result.printers[0]}. Switch if your printer moved.`
-          : `Found ${result.printers.length} printers. Saved IP ${printerIp ?? "none"} not in list.`,
+          ? t("printer.foundOneSwitch", { ip: result.printers[0] })
+          : t("printer.foundManyNotInList", {
+              count: result.printers.length,
+              savedIp: printerIp ?? t("printer.noSavedIp"),
+            }),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Scan failed");
+      setError(translateError(e, t) || t("errors.scanFailed"));
     } finally {
       setScanning(false);
     }
@@ -94,10 +102,10 @@ export function PrinterActions({
       await window.scanbyPrint.switchPrinterIp(ip);
       setFoundPrinters([]);
       await window.scanbyPrint.clearPendingPrinterPicker();
-      setMessage(`Now using printer at ${ip}.`);
+      setMessage(t("printer.nowUsing", { ip }));
       onUpdated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not switch printer");
+      setError(translateError(e, t) || t("errors.switchPrinterFailed"));
     } finally {
       setSwitchingIp(null);
     }
@@ -112,6 +120,25 @@ export function PrinterActions({
     onUpdated();
   }
 
+  function formatLastScanLine(): string | null {
+    if (!lastScan || printerStatus === "scanning" || scanning) {
+      return null;
+    }
+
+    const time = formatTimeOnly(lastScan.completedAt);
+    const subnetPart = lastScan.subnet
+      ? t("printer.lastScanSubnet", { subnet: lastScan.subnet })
+      : "";
+    const foundPart =
+      lastScan.printers.length === 0
+        ? t("printer.lastScanNone")
+        : t("printer.lastScanCount", { count: lastScan.printers.length });
+
+    return t("printer.lastScan", { time, subnet: subnetPart, found: foundPart });
+  }
+
+  const lastScanLine = formatLastScanLine();
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
@@ -121,7 +148,7 @@ export function PrinterActions({
           disabled={busy || !printerIp || printerStatus === "online"}
           className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-3 py-2 text-sm transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
         >
-          {reconnecting ? "Reconnecting..." : "Reconnect"}
+          {reconnecting ? t("printer.reconnecting") : t("printer.reconnect")}
         </button>
         <button
           type="button"
@@ -129,30 +156,18 @@ export function PrinterActions({
           disabled={busy}
           className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-3 py-2 text-sm transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
         >
-          {scanning ? "Scanning..." : "Rescan network"}
+          {scanning ? t("printer.scanning") : t("printer.rescanNetwork")}
         </button>
       </div>
 
-      {offline ? (
-        <p className="text-xs text-zinc-500">
-          Printer offline. Reconnect checks the saved IP. Rescan searches the local network.
-        </p>
-      ) : null}
+      {offline ? <p className="text-xs text-zinc-500">{t("printer.offlineHint")}</p> : null}
 
-      {lastScan && printerStatus !== "scanning" && !scanning ? (
-        <p className="text-xs text-zinc-500">
-          Last scan {new Date(lastScan.completedAt).toLocaleTimeString()}
-          {lastScan.subnet ? ` · subnet ${lastScan.subnet}.x` : ""}
-          {lastScan.printers.length === 0
-            ? " · no printers found"
-            : ` · ${lastScan.printers.length} found`}
-        </p>
-      ) : null}
+      {lastScanLine ? <p className="text-xs text-zinc-500">{lastScanLine}</p> : null}
 
       {printerStatus === "scanning" && !scanning ? (
         <div className="flex items-center gap-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">
           <span className="size-2 animate-pulse rounded-full bg-amber-400" />
-          <p className="text-amber-200 text-sm">Auto-scanning network for printer…</p>
+          <p className="text-amber-200 text-sm">{t("printer.autoScanning")}</p>
         </div>
       ) : null}
 
@@ -170,7 +185,7 @@ export function PrinterActions({
 
       {pendingPrinterPicker && pendingPrinterPicker.length > 1 ? (
         <p className="rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-amber-200 text-sm">
-          Multiple printers detected after reconnect. Pick the correct one below.
+          {t("printer.multipleAfterReconnect")}
         </p>
       ) : null}
 
@@ -178,7 +193,9 @@ export function PrinterActions({
         <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-zinc-500">
-              {pendingPrinterPicker ? "Printers found — choose one" : "Other printers found"}
+              {pendingPrinterPicker
+                ? t("printer.printersChooseOne")
+                : t("printer.otherPrintersFound")}
             </p>
             {pendingPrinterPicker ? (
               <button
@@ -186,7 +203,7 @@ export function PrinterActions({
                 onClick={() => void handleDismissPicker()}
                 className="text-xs text-zinc-500 transition hover:text-zinc-300"
               >
-                Dismiss
+                {t("printer.dismiss")}
               </button>
             ) : null}
           </div>
@@ -200,7 +217,7 @@ export function PrinterActions({
                   disabled={switchingIp !== null}
                   className="shrink-0 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-primary text-xs transition hover:bg-primary/20 disabled:opacity-50"
                 >
-                  {switchingIp === ip ? "Switching..." : "Use this IP"}
+                  {switchingIp === ip ? t("printer.switching") : t("printer.useThisIp")}
                 </button>
               </li>
             ))}

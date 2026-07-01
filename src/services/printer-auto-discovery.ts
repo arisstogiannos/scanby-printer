@@ -6,6 +6,7 @@ import { connectToPrinter } from "@/services/printer-connection";
 import { runPrinterScan } from "@/services/printer-scan-service";
 import { testPrint } from "@/services/printer-service";
 import { showTrayNotification } from "@/services/tray-notifications";
+import { t } from "@/shared/i18n";
 
 let autoConnectInFlight: Promise<void> | null = null;
 
@@ -24,7 +25,10 @@ export async function autoConnectPrinterAfterPair(): Promise<void> {
 
     if (result.printers.length === 0) {
       log.warn("No printers found after pair — manual setup required");
-      showTrayNotification("No printer found", "Open Scanby Print Service to set up your printer.");
+      showTrayNotification(
+        t("notifications.noPrinterFound"),
+        t("notifications.noPrinterFoundBody"),
+      );
       return;
     }
 
@@ -40,15 +44,18 @@ export async function autoConnectPrinterAfterPair(): Promise<void> {
       await connectToPrinter(ip);
       const body =
         result.printers.length > 1
-          ? `Connected to ${ip} (first of ${result.printers.length}). Rescan in settings to change.`
-          : `Connected to ${ip} automatically.`;
-      showTrayNotification("Printer connected", body);
+          ? t("notifications.printerConnectedMany", {
+              ip,
+              count: result.printers.length,
+            })
+          : t("notifications.printerConnectedOne", { ip });
+      showTrayNotification(t("notifications.printerConnected"), body);
       hideSetupWindow();
     } catch (error) {
       log.error(`Auto-connect failed for ${ip}`, error);
       showTrayNotification(
-        "Printer setup needed",
-        `Found printer at ${ip} but test print failed. Open settings to finish setup.`,
+        t("notifications.printerSetupNeeded"),
+        t("notifications.printerSetupNeededBody", { ip }),
       );
     }
   })().finally(() => {
@@ -86,7 +93,10 @@ export async function autoRescanForPrinter(): Promise<AutoRescanResult> {
 
     try {
       await connectToPrinter(ip);
-      showTrayNotification("Printer moved", `Printer moved to ${ip} — switched automatically`);
+      showTrayNotification(
+        t("notifications.printerMoved"),
+        t("notifications.printerMovedBody", { ip }),
+      );
       return { action: "switched", ip };
     } catch (error) {
       log.error(`Auto-rescan failed to switch to ${ip}`, error);
@@ -100,8 +110,8 @@ export async function autoRescanForPrinter(): Promise<AutoRescanResult> {
 
   appState.setPendingPrinterPicker(result.printers);
   showTrayNotification(
-    "Multiple printers found",
-    "Open Scanby Print Service to choose the correct printer.",
+    t("notifications.multiplePrinters"),
+    t("notifications.multiplePrintersBody"),
   );
   showSetupWindow();
   return { action: "picker", printers: result.printers };

@@ -1,21 +1,57 @@
 import { ipcMain } from "electron";
 import log from "electron-log";
 import { buildRendererAppState } from "@/main/ipc/renderer-state";
-import { hideSetupWindow, showSetupWindow } from "@/main/window-manager";
+import { broadcastAppState } from "@/main/ipc/state-broadcaster";
+import { refreshTray } from "@/main/tray";
+import { getSetupWindow, hideSetupWindow, showSetupWindow } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
 import { getConfig, getSafeConfigSummary } from "@/services/config-store";
 import { showPostSetupTrayDiscovery } from "@/services/post-setup-tray";
 import { findEntryById, recordPrint } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
-import { connectToPrinter, reconnectPrinter } from "@/services/printer-connection";
+import {
+  connectToPrinter,
+  PrinterConnectError,
+  reconnectPrinter,
+} from "@/services/printer-connection";
 import { probePrinter } from "@/services/printer-discovery";
 import { runPrinterScan } from "@/services/printer-scan-service";
 import { testPrint } from "@/services/printer-service";
 import { unpairApp } from "@/services/unpair";
 import { checkForUpdates, getUpdateState, quitAndInstallUpdate } from "@/services/update-state";
+import { setLocale } from "@/services/user-preferences";
+import { initI18n, t } from "@/shared/i18n";
+import { type IpcErrorCode, throwIpcError } from "@/shared/ipc-errors";
+
+function rethrowPrinterConnectError(error: unknown): never {
+  if (error instanceof PrinterConnectError) {
+    const codeMap: Record<PrinterConnectError["code"], IpcErrorCode> = {
+      invalid_ip: "INVALID_IP",
+      not_paired: "NOT_PAIRED",
+      unreachable: "PRINTER_UNREACHABLE",
+    };
+    throwIpcError(codeMap[error.code]);
+  }
+  throw error;
+}
 
 export function registerIpcHandlers(): void {
   ipcMain.handle("app:get-state", () => buildRendererAppState());
+
+  ipcMain.handle("app:set-locale", async (_event, locale: unknown) => {
+    if (locale !== "en" && locale !== "el") {
+      throw new Error("Invalid locale");
+    }
+    setLocale(locale);
+    await initI18n(locale);
+    refreshTray();
+    const setupWindow = getSetupWindow();
+    if (setupWindow && !setupWindow.isDestroyed()) {
+      setupWindow.setTitle(t("app.title"));
+    }
+    broadcastAppState();
+    return buildRendererAppState();
+  });
 
   ipcMain.handle("app:get-config-summary", () => {
     return getSafeConfigSummary();
@@ -32,14 +68,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle("printer:probe", async (_event, ip: string) => {
     if (typeof ip !== "string" || !ip.trim()) {
-      throw new Error("Invalid IP");
+      throwIpcError("INVALID_IP");
     }
     return probePrinter(ip.trim());
   });
 
   ipcMain.handle("printer:test", async (_event, ip: string) => {
     if (typeof ip !== "string" || !ip.trim()) {
-      throw new Error("Invalid IP");
+      throwIpcError("INVALID_IP");
     }
     try {
       await testPrint(ip.trim());
@@ -80,22 +116,26 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle("printer:save", async (_event, ip: string) => {
     if (typeof ip !== "string" || !ip.trim()) {
-      throw new Error("Invalid IP");
+      throwIpcError("INVALID_IP");
     }
-    await connectToPrinter(ip);
-    return { ok: true };
+    try {
+      await connectToPrinter(ip);
+      return { ok: true };
+    } catch (error) {
+      rethrowPrinterConnectError(error);
+    }
   });
 
   ipcMain.handle("printer:switch-ip", async (_event, ip: string) => {
     if (typeof ip !== "string" || !ip.trim()) {
-      throw new Error("Invalid IP");
+      throwIpcError("INVALID_IP");
     }
     try {
       await connectToPrinter(ip.trim());
       return { ok: true };
     } catch (error) {
       log.error("Printer switch failed", error);
-      throw error;
+      rethrowPrinterConnectError(error);
     }
   });
 
@@ -136,12 +176,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle("print:retry", (_event, entryId: string) => {
     if (typeof entryId !== "string" || !entryId.trim()) {
-      throw new Error("Invalid entry ID");
+      throwIpcError("INVALID_ENTRY_ID");
     }
 
     const entry = findEntryById(entryId.trim());
     if (!entry?.payload) {
-      throw new Error("Cannot retry — order data missing");
+      throwIpcError("RETRY_DATA_MISSING");
     }
 
     const queued = printQueue.enqueue(entry.payload, {

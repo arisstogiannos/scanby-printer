@@ -8,6 +8,7 @@ import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
 import { restartSupabaseListener } from "@/services/supabase-listener";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { hasSeenPairNotification, markPairNotificationSeen } from "@/services/user-preferences";
+import { t } from "@/shared/i18n";
 import { normalizePairPayload } from "@/shared/pair-payload";
 
 export async function pairHandler(req: Request, res: Response): Promise<void> {
@@ -31,8 +32,8 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
     if (!hasSeenPairNotification()) {
       markPairNotificationSeen();
       showTrayNotification(
-        `Connected to ${payload.businessName}`,
-        "Choose your kitchen printer to finish setup.",
+        t("notifications.connectedToVenue", { venueName: payload.businessName }),
+        t("notifications.connectedToVenueBody"),
       );
     }
 

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { BrowserWindow, shell } from "electron";
 import { getAppIcon } from "@/main/app-icon";
 import { broadcastAppState } from "@/main/ipc/state-broadcaster";
+import { t } from "@/shared/i18n";
 
 function getPreloadPath(): string {
   const candidates = [
@@ -36,7 +37,7 @@ export function createSetupWindow(): BrowserWindow {
     fullscreenable: false,
     show: false,
     autoHideMenuBar: true,
-    title: "Scanby Print Service",
+    title: t("app.title"),
     icon: getAppIcon(256),
     webPreferences: {
       preload: getPreloadPath(),

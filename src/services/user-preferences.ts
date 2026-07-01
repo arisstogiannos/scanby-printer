@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Locale } from "@/shared/i18n";
 
 type UserPreferences = {
+  locale?: Locale;
   hasSeenTrayDiscovery: boolean;
   hasSeenPairNotification: boolean;
 };
@@ -33,7 +35,9 @@ function loadPreferences(): UserPreferences {
       return { hasSeenTrayDiscovery: false, hasSeenPairNotification: false };
     }
     const o = parsed as Record<string, unknown>;
+    const locale = o.locale === "el" || o.locale === "en" ? o.locale : undefined;
     return {
+      locale,
       hasSeenTrayDiscovery: o.hasSeenTrayDiscovery === true,
       hasSeenPairNotification: o.hasSeenPairNotification === true,
     };
@@ -54,9 +58,26 @@ function savePreferences(): void {
   writeFileSync(getPreferencesPath(), JSON.stringify(preferences, null, 2), "utf-8");
 }
 
-export function initUserPreferences(dataPath: string): void {
+export function initUserPreferences(dataPath: string, defaultLocale: Locale = "en"): void {
   userDataPath = dataPath;
   preferences = loadPreferences();
+
+  if (!preferences.locale) {
+    preferences.locale = defaultLocale;
+    savePreferences();
+  }
+}
+
+export function getLocale(): Locale {
+  return preferences.locale ?? "en";
+}
+
+export function setLocale(locale: Locale): void {
+  if (preferences.locale === locale) {
+    return;
+  }
+  preferences.locale = locale;
+  savePreferences();
 }
 
 export function hasSeenTrayDiscovery(): boolean {

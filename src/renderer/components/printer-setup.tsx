@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AUTO_SAVE_CANCEL_MS } from "@/shared/constants";
-import type { PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
+import type { Locale, PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
+import { translateError } from "../translate-error";
+import { useFormatDate } from "../use-format-date";
 
 type PrinterSetupProps = {
   businessName: string;
   printerStatus: PrinterStatus;
   pendingPrinterPicker: string[] | null;
   lastScan: PrinterScanSnapshot | null;
+  locale: Locale;
   onSaved: () => void;
   onUnpaired: () => void;
 };
@@ -18,9 +22,12 @@ export function PrinterSetup({
   printerStatus,
   pendingPrinterPicker,
   lastScan,
+  locale,
   onSaved,
   onUnpaired,
 }: PrinterSetupProps) {
+  const { t } = useTranslation();
+  const { formatTimeOnly } = useFormatDate(locale);
   const [printers, setPrinters] = useState<string[]>([]);
   const [subnet, setSubnet] = useState<string | null>(null);
   const [selectedIp, setSelectedIp] = useState("");
@@ -60,7 +67,7 @@ export function PrinterSetup({
       setError(null);
       try {
         await window.scanbyPrint.testPrint(ip);
-        setMessage("Test print OK. Saving automatically in 5s…");
+        setMessage(t("printer.testPrintOkAutoSave"));
 
         let remaining = AUTO_SAVE_CANCEL_MS / 1000;
         setAutoSaveCountdown(remaining);
@@ -73,10 +80,10 @@ export function PrinterSetup({
               setSaving(true);
               try {
                 await window.scanbyPrint.savePrinter(ip);
-                setMessage("Saved. App is now running in the system tray.");
+                setMessage(t("printer.savedToTray"));
                 onSaved();
               } catch (e) {
-                setError(e instanceof Error ? e.message : "Save failed");
+                setError(translateError(e, t) || t("errors.saveFailed"));
               } finally {
                 setSaving(false);
               }
@@ -87,12 +94,12 @@ export function PrinterSetup({
         }, 1000);
       } catch (e) {
         autoPipelineIpRef.current = null;
-        setError(e instanceof Error ? e.message : "Test print failed");
+        setError(translateError(e, t) || t("errors.testPrintFailed"));
       } finally {
         setTesting(false);
       }
     },
-    [onSaved, clearAutoSaveTimer],
+    [onSaved, clearAutoSaveTimer, t],
   );
 
   const applyScanResult = useCallback(
@@ -105,18 +112,18 @@ export function PrinterSetup({
         setSelectedIp(ip);
         setMode("scanned");
         if (!autoPipelineIpRef.current) {
-          setMessage("One printer found — running test print…");
+          setMessage(t("printer.onePrinterFound"));
           void runSmartPipeline(ip);
         }
       } else if (foundPrinters.length === 0) {
         setMode("manual");
-        setMessage("No printers found. Enter IP manually or rescan.");
+        setMessage(t("printer.noPrintersFound"));
       } else {
         setSelectedIp(foundPrinters[0]);
-        setMessage(`Found ${foundPrinters.length} printers. Pick one or rescan.`);
+        setMessage(t("printer.multiplePrintersFound", { count: foundPrinters.length }));
       }
     },
-    [runSmartPipeline],
+    [runSmartPipeline, t],
   );
 
   const runScan = useCallback(async () => {
@@ -130,11 +137,11 @@ export function PrinterSetup({
       const result = await window.scanbyPrint.scanPrinters();
       applyScanResult(result.printers, result.subnet ?? null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Scan failed");
+      setError(translateError(e, t) || t("errors.scanFailed"));
     } finally {
       setScanning(false);
     }
-  }, [applyScanResult, clearAutoSaveTimer]);
+  }, [applyScanResult, clearAutoSaveTimer, t]);
 
   useEffect(() => {
     const hasRecentScan =
@@ -162,7 +169,7 @@ export function PrinterSetup({
 
   async function handleTestPrint() {
     if (!activeIp) {
-      setError("Select or enter a printer IP first");
+      setError(t("errors.selectIpFirst"));
       return;
     }
     clearAutoSaveTimer();
@@ -171,9 +178,9 @@ export function PrinterSetup({
     setError(null);
     try {
       await window.scanbyPrint.testPrint(activeIp);
-      setMessage("Test print sent successfully.");
+      setMessage(t("printer.testPrintSent"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Test print failed");
+      setError(translateError(e, t) || t("errors.testPrintFailed"));
     } finally {
       setTesting(false);
     }
@@ -187,7 +194,7 @@ export function PrinterSetup({
       await window.scanbyPrint.unpair();
       onUnpaired();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Disconnect failed");
+      setError(translateError(e, t) || t("errors.disconnectFailed"));
     } finally {
       setDisconnecting(false);
     }
@@ -195,7 +202,7 @@ export function PrinterSetup({
 
   async function handleSave() {
     if (!activeIp) {
-      setError("Select or enter a printer IP first");
+      setError(t("errors.selectIpFirst"));
       return;
     }
     clearAutoSaveTimer();
@@ -203,10 +210,10 @@ export function PrinterSetup({
     setError(null);
     try {
       await window.scanbyPrint.savePrinter(activeIp);
-      setMessage("Saved. App is now running in the system tray.");
+      setMessage(t("printer.savedToTray"));
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(translateError(e, t) || t("errors.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -215,18 +222,35 @@ export function PrinterSetup({
   function handleCancelAutoSave() {
     clearAutoSaveTimer();
     autoPipelineIpRef.current = null;
-    setMessage("Auto-save cancelled. Use Save & Start when ready.");
+    setMessage(t("printer.autoSaveCancelled"));
   }
+
+  function formatLastScanLine(): string | null {
+    if (!lastScan || scanBusy) {
+      return null;
+    }
+
+    const time = formatTimeOnly(lastScan.completedAt);
+    const subnetPart = lastScan.subnet
+      ? t("printer.lastScanSubnet", { subnet: lastScan.subnet })
+      : "";
+    const foundPart =
+      lastScan.printers.length === 0
+        ? t("printer.lastScanNone")
+        : t("printer.lastScanCount", { count: lastScan.printers.length });
+
+    return t("printer.lastScan", { time, subnet: subnetPart, found: foundPart });
+  }
+
+  const lastScanLine = formatLastScanLine();
 
   return (
     <section className="flex flex-col gap-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-primary text-sm">Linked to</p>
+          <p className="text-primary text-sm">{t("printer.linkedTo")}</p>
           <p className="font-medium text-lg">{businessName}</p>
-          <p className="mt-1 text-xs text-zinc-500">
-            Scan runs automatically on pair. Rescan anytime to change printer.
-          </p>
+          <p className="mt-1 text-xs text-zinc-500">{t("printer.scanHint")}</p>
         </div>
         <button
           type="button"
@@ -234,7 +258,7 @@ export function PrinterSetup({
           disabled={disconnecting}
           className="shrink-0 rounded-md px-2 py-1 text-red-400 text-sm transition hover:bg-red-950/30 hover:text-red-300 disabled:opacity-50"
         >
-          {disconnecting ? "..." : "Disconnect"}
+          {disconnecting ? t("printer.disconnecting") : t("printer.disconnect")}
         </button>
       </div>
 
@@ -245,35 +269,29 @@ export function PrinterSetup({
           disabled={scanBusy || testing || saving}
           className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-2 text-sm transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
         >
-          {scanBusy ? "Scanning..." : "Rescan network"}
+          {scanBusy ? t("printer.scanning") : t("printer.rescanNetwork")}
         </button>
-        {subnet ? <span className="text-xs text-zinc-500">Subnet {subnet}.x</span> : null}
+        {subnet ? (
+          <span className="text-xs text-zinc-500">{t("printer.subnet", { subnet })}</span>
+        ) : null}
       </div>
 
       {isScanning && !testing && !saving ? (
         <div className="flex items-center gap-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">
           <span className="size-2 animate-pulse rounded-full bg-amber-400" />
-          <p className="text-amber-200 text-sm">Scanning local network for printers…</p>
+          <p className="text-amber-200 text-sm">{t("printer.scanningLocal")}</p>
         </div>
       ) : null}
 
       {isExternalScan && !testing && !saving ? (
-        <p className="text-xs text-zinc-500">Background scan in progress…</p>
+        <p className="text-xs text-zinc-500">{t("printer.backgroundScan")}</p>
       ) : null}
 
-      {lastScan && !scanBusy ? (
-        <p className="text-xs text-zinc-500">
-          Last scan {new Date(lastScan.completedAt).toLocaleTimeString()}
-          {lastScan.subnet ? ` · subnet ${lastScan.subnet}.x` : ""}
-          {lastScan.printers.length === 0
-            ? " · no printers found"
-            : ` · ${lastScan.printers.length} found`}
-        </p>
-      ) : null}
+      {lastScanLine ? <p className="text-xs text-zinc-500">{lastScanLine}</p> : null}
 
       {printers.length > 0 ? (
         <fieldset className="space-y-2">
-          <legend className="mb-2 text-sm text-zinc-400">Found</legend>
+          <legend className="mb-2 text-sm text-zinc-400">{t("printer.found")}</legend>
           {printers.map((ip) => (
             <label
               key={ip}
@@ -318,7 +336,7 @@ export function PrinterSetup({
           className="mt-1 accent-primary"
         />
         <span className="flex-1">
-          <span className="block text-sm">Enter IP manually</span>
+          <span className="block text-sm">{t("printer.enterIpManually")}</span>
           <input
             type="text"
             value={manualIp}
@@ -336,13 +354,15 @@ export function PrinterSetup({
 
       {autoSaveCountdown !== null ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">
-          <p className="text-amber-200 text-sm">Auto-saving in {autoSaveCountdown}s…</p>
+          <p className="text-amber-200 text-sm">
+            {t("printer.autoSavingIn", { seconds: autoSaveCountdown })}
+          </p>
           <button
             type="button"
             onClick={handleCancelAutoSave}
             className="shrink-0 rounded-md border border-amber-800/50 px-2.5 py-1 text-amber-200 text-xs transition hover:bg-amber-950/40"
           >
-            Cancel
+            {t("printer.cancel")}
           </button>
         </div>
       ) : null}
@@ -365,7 +385,7 @@ export function PrinterSetup({
           disabled={testing || saving || !activeIp}
           className="flex-1 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
         >
-          {testing ? "Printing..." : "Test Print"}
+          {testing ? t("printer.printing") : t("printer.testPrint")}
         </button>
         <button
           type="button"
@@ -373,7 +393,7 @@ export function PrinterSetup({
           disabled={saving || testing || !activeIp}
           className="flex-1 rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground text-sm transition hover:opacity-90 disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save & Start"}
+          {saving ? t("printer.saving") : t("printer.saveAndStart")}
         </button>
       </div>
     </section>

@@ -16,6 +16,7 @@ import {
 import { printOrder } from "@/services/printer-service";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { PENDING_JOB_MAX_AGE_MS, PRINT_DEDUPE_MS, PRINT_RETRY_DELAYS_MS } from "@/shared/constants";
+import { t } from "@/shared/i18n";
 import type { OrderPrintEvent, PrintHistorySource, PrintOrder } from "@/shared/types";
 
 type QueueJob = {
@@ -283,7 +284,10 @@ class PrintQueue {
 
         const failureReason = formatFailureReason(message);
 
-        showTrayNotification(`Order #${job.order.number} failed`, failureReason);
+        showTrayNotification(
+          t("notifications.orderFailed", { number: job.order.number }),
+          failureReason,
+        );
         flashTrayIconRed();
       }
     }

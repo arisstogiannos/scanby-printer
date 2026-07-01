@@ -3,25 +3,17 @@ import { CharacterSet, PrinterTypes, ThermalPrinter } from "node-thermal-printer
 import { appState } from "@/services/app-state";
 import { beginPrintOperation, endPrintOperation } from "@/services/printer-activity";
 import { probeSavedPrinterReachable } from "@/services/printer-discovery";
+import { getLocale } from "@/services/user-preferences";
 import { CENTS_PER_EUR, PRINTER_PORT } from "@/shared/constants";
+import type { Locale } from "@/shared/i18n";
+import { localeTag, t } from "@/shared/i18n";
 import type { OrderPrintEvent, PrintOrder, PrintOrderItem } from "@/shared/types";
 
-const EVENT_HEADERS: Record<OrderPrintEvent, string> = {
-  order_created: "ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ",
-  order_updated: "ΕΝΗΜΕΡΩΣΗ",
-  order_cancelled: "ΑΚΥΡΩΣΗ",
-};
-
-const EVENT_FOOTERS: Partial<Record<OrderPrintEvent, string>> = {
-  order_updated: "ΕΠΑΝΕΚΤΥΠΩΣΗ",
-  order_cancelled: "Η παραγγελία ακυρώθηκε",
-};
-
-function createPrinter(printerIp: string): ThermalPrinter {
+function createPrinter(printerIp: string, locale: Locale): ThermalPrinter {
   return new ThermalPrinter({
     type: PrinterTypes.EPSON,
     interface: `tcp://${printerIp}:${PRINTER_PORT}`,
-    characterSet: CharacterSet.PC737_GREEK,
+    characterSet: locale === "el" ? CharacterSet.PC737_GREEK : CharacterSet.PC437_USA,
     removeSpecialCharacters: false,
     lineCharacter: "-",
     options: {
@@ -39,14 +31,14 @@ function formatPreferencesNotes(notes?: string): string | undefined {
 
 const TICKET_LINE_WIDTH = 32;
 
-function formatCentsAsEur(totalCents: number): string {
-  return new Intl.NumberFormat("el-GR", {
+function formatCentsAsEur(totalCents: number, locale: Locale): string {
+  return new Intl.NumberFormat(localeTag(locale), {
     style: "currency",
     currency: "EUR",
   }).format(totalCents / CENTS_PER_EUR);
 }
 
-function formatItemMainLine(item: PrintOrderItem): string {
+function formatItemMainLine(item: PrintOrderItem, locale: Locale): string {
   const left = `${item.quantity}x  ${item.name}`;
 
   if (
@@ -60,7 +52,7 @@ function formatItemMainLine(item: PrintOrderItem): string {
   }
 
   const lineTotalCents = item.quantity * item.price;
-  const priceText = formatCentsAsEur(lineTotalCents);
+  const priceText = formatCentsAsEur(lineTotalCents, locale);
   const padding = Math.max(1, TICKET_LINE_WIDTH - left.length - priceText.length);
   return `${left}${" ".repeat(padding)}${priceText}`;
 }
@@ -87,43 +79,53 @@ function calculateOrderTotalCents(items: PrintOrderItem[]): number | undefined {
   return totalCents;
 }
 
+function ticketFooterLine(event: OrderPrintEvent): string | undefined {
+  const key = `tickets.footer.${event}`;
+  const value = t(key);
+  return value === key ? undefined : value;
+}
+
 export function buildTicketLines(
   order: PrintOrder,
   event: OrderPrintEvent = "order_created",
+  locale: Locale = getLocale(),
 ): {
   headerLine: string;
   tableLine: string;
   itemLines: Array<{ main: string; note?: string }>;
   totalLine?: string;
+  totalLabel: string;
   footerLine?: string;
   timeLine: string;
   showItems: boolean;
 } {
+  const tag = localeTag(locale);
   const createdAt = new Date(order.createdAt);
   const timeLine = Number.isNaN(createdAt.getTime())
-    ? new Date().toLocaleTimeString("el-GR")
-    : createdAt.toLocaleTimeString("el-GR");
+    ? new Date().toLocaleTimeString(tag)
+    : createdAt.toLocaleTimeString(tag);
 
   const tableSuffix = order.number > 0 ? `  #${order.number}` : "";
   const tableLine =
     event === "order_cancelled" && order.table === "?"
-      ? `ORDER ${order.id.slice(0, 8)}`
-      : `TABLE ${order.table}${tableSuffix}`;
+      ? t("tickets.order", { id: order.id.slice(0, 8) })
+      : t("tickets.table", { table: order.table, suffix: tableSuffix });
 
   const orderTotalCents = calculateOrderTotalCents(order.items);
 
   return {
-    headerLine: EVENT_HEADERS[event],
+    headerLine: t(`tickets.event.${event}`),
     tableLine,
     itemLines: order.items.map((item) => ({
-      main: formatItemMainLine(item),
+      main: formatItemMainLine(item, locale),
       note: formatPreferencesNotes(item.notes),
     })),
     totalLine:
       orderTotalCents !== undefined && event !== "order_cancelled"
-        ? formatCentsAsEur(orderTotalCents)
+        ? formatCentsAsEur(orderTotalCents, locale)
         : undefined,
-    footerLine: EVENT_FOOTERS[event],
+    totalLabel: t("tickets.total"),
+    footerLine: ticketFooterLine(event),
     timeLine,
     showItems: event !== "order_cancelled" && order.items.length > 0,
   };
@@ -133,9 +135,18 @@ async function renderOrder(
   printer: ThermalPrinter,
   order: PrintOrder,
   event: OrderPrintEvent = "order_created",
+  locale: Locale = getLocale(),
 ): Promise<void> {
-  const { headerLine, tableLine, itemLines, totalLine, footerLine, timeLine, showItems } =
-    buildTicketLines(order, event);
+  const {
+    headerLine,
+    tableLine,
+    itemLines,
+    totalLine,
+    totalLabel,
+    footerLine,
+    timeLine,
+    showItems,
+  } = buildTicketLines(order, event, locale);
 
   printer.alignCenter();
   printer.bold(true);
@@ -165,7 +176,7 @@ async function renderOrder(
   if (totalLine) {
     printer.alignRight();
     printer.bold(true);
-    printer.println(`ΣΥΝΟΛΟ  ${totalLine}`);
+    printer.println(`${totalLabel}  ${totalLine}`);
     printer.bold(false);
     printer.drawLine();
   }
@@ -218,8 +229,9 @@ export async function printOrder(
   order: PrintOrder,
   event: OrderPrintEvent = "order_created",
 ): Promise<void> {
-  const printer = createPrinter(printerIp);
-  await renderOrder(printer, order, event);
+  const locale = getLocale();
+  const printer = createPrinter(printerIp, locale);
+  await renderOrder(printer, order, event, locale);
   await runPrinterJob(
     printerIp,
     printer,
@@ -228,16 +240,18 @@ export async function printOrder(
 }
 
 export async function testPrint(printerIp: string): Promise<void> {
-  const printer = createPrinter(printerIp);
+  const locale = getLocale();
+  const printer = createPrinter(printerIp, locale);
+  const tag = localeTag(locale);
 
   printer.alignCenter();
   printer.bold(true);
   printer.setTextDoubleHeight();
-  printer.println("Scanby Print Service");
+  printer.println(t("tickets.appName"));
   printer.bold(false);
   printer.newLine();
-  printer.println("Test print OK");
-  printer.println(new Date().toLocaleString("el-GR"));
+  printer.println(t("tickets.testPrintOk"));
+  printer.println(new Date().toLocaleString(tag));
   printer.setTextNormal();
   printer.cut();
 

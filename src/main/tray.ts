@@ -6,42 +6,60 @@ import { appState } from "@/services/app-state";
 import { getConfig, isConfigured, isPaired } from "@/services/config-store";
 import { testPrint } from "@/services/printer-service";
 import { unpairApp } from "@/services/unpair";
+import { t } from "@/shared/i18n";
+import type { PrinterStatus } from "@/shared/types";
 
 let tray: Tray | null = null;
 let quitHandler: (() => void) | null = null;
 let contextMenu: Menu | null = null;
 
+function printerStatusLabel(status: PrinterStatus): string {
+  switch (status) {
+    case "online":
+      return t("tray.printerOnline");
+    case "printing":
+      return t("tray.printerPrinting");
+    case "scanning":
+      return t("tray.printerScanning");
+    default:
+      return t("tray.printerOffline");
+  }
+}
+
+function statusTooltipLabel(status: PrinterStatus): string {
+  const labels: Record<PrinterStatus, string> = {
+    online: t("status.online"),
+    offline: t("status.offline"),
+    printing: t("status.printing"),
+    scanning: t("status.scanning"),
+  };
+  return labels[status];
+}
+
 function buildMenu(): Menu {
   const snapshot = appState.getSnapshot();
   const config = getConfig();
 
-  const printerLabel =
-    snapshot.printerStatus === "online"
-      ? "Printer: Online"
-      : snapshot.printerStatus === "printing"
-        ? "Printer: Printing..."
-        : snapshot.printerStatus === "scanning"
-          ? "Printer: Scanning..."
-          : "Printer: Offline";
+  const printerLabel = printerStatusLabel(snapshot.printerStatus);
 
   const venueLabel = snapshot.businessName
-    ? `Venue: ${snapshot.businessName}`
-    : "Venue: Not paired";
+    ? t("tray.venue", { name: snapshot.businessName })
+    : t("tray.venueNotPaired");
 
   const items: Electron.MenuItemConstructorOptions[] = [
-    { label: "Scanby Print Service", enabled: false },
+    { label: t("tray.appName"), enabled: false },
     { type: "separator" },
     { label: printerLabel, enabled: false },
     { label: venueLabel, enabled: false },
     { type: "separator" },
     {
-      label: "Settings",
+      label: t("tray.settings"),
       click: () => {
         showSetupWindow();
       },
     },
     {
-      label: "Test Print",
+      label: t("tray.testPrint"),
       enabled: Boolean(config?.printerIp),
       click: () => {
         if (!config?.printerIp) {
@@ -55,7 +73,7 @@ function buildMenu(): Menu {
     ...(isPaired()
       ? [
           {
-            label: "Disconnect venue",
+            label: t("tray.disconnectVenue"),
             click: () => {
               void unpairApp().then(() => showSetupWindow());
             },
@@ -67,7 +85,7 @@ function buildMenu(): Menu {
 
   if (quitHandler) {
     items.push({
-      label: "Quit",
+      label: t("tray.quit"),
       click: quitHandler,
     });
   }
@@ -81,7 +99,7 @@ function updateTrayIcon(): void {
   }
   const snapshot = appState.getSnapshot();
   tray.setImage(iconForPrinterStatus(snapshot.printerStatus));
-  tray.setToolTip(`Scanby Print Service — ${snapshot.printerStatus}`);
+  tray.setToolTip(t("tray.tooltip", { status: statusTooltipLabel(snapshot.printerStatus) }));
   contextMenu = buildMenu();
 }
 
@@ -93,7 +111,7 @@ export function initTray(quitItem: { label: string; click: () => void }): Tray {
   }
 
   tray = new Tray(iconForPrinterStatus("offline"));
-  tray.setToolTip("Scanby Print Service");
+  tray.setToolTip(t("tray.appName"));
   contextMenu = buildMenu();
 
   appState.on("change", () => {

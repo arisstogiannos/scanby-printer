@@ -1,26 +1,23 @@
-import { type MouseEvent, useState } from "react";
-import type { PrintHistoryEntry, PrintHistorySource, PrintHistoryStatus } from "@/shared/types";
+import { type MouseEvent, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type {
+  Locale,
+  PrintHistoryEntry,
+  PrintHistorySource,
+  PrintHistoryStatus,
+} from "@/shared/types";
+import { translateError } from "../translate-error";
+import { useFormatDate } from "../use-format-date";
 
 type PrintHistoryProps = {
   entries: PrintHistoryEntry[];
+  locale: Locale;
   onRetry?: () => void;
 };
 
 type PayloadField = {
   label: string;
   value: string;
-};
-
-const SOURCE_LABELS: Record<PrintHistorySource, string> = {
-  realtime: "Auto",
-  manual: "Manual",
-  test: "Test",
-};
-
-const STATUS_LABELS: Record<PrintHistoryStatus, string> = {
-  received: "Received",
-  printed: "Printed",
-  failed: "Failed",
 };
 
 function statusBadgeClass(status: PrintHistoryStatus): string {
@@ -45,72 +42,49 @@ function statusDotClass(status: PrintHistoryStatus): string {
   }
 }
 
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
+function PayloadDetails({ entry, locale }: { entry: PrintHistoryEntry; locale: Locale }) {
+  const { t } = useTranslation();
+  const { formatDateTime } = useFormatDate(locale);
 
-  const now = new Date();
-  const isToday =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
+  const sourceLabels: Record<PrintHistorySource, string> = useMemo(
+    () => ({
+      realtime: t("history.sourceAuto"),
+      manual: t("history.sourceManual"),
+      test: t("history.sourceTest"),
+    }),
+    [t],
+  );
 
-  if (isToday) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
+  const statusLabels: Record<PrintHistoryStatus, string> = useMemo(
+    () => ({
+      received: t("history.statusReceived"),
+      printed: t("history.statusPrinted"),
+      failed: t("history.statusFailed"),
+    }),
+    [t],
+  );
 
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatOrderLabel(entry: PrintHistoryEntry): string {
-  if (entry.source === "test") {
-    return "Test print";
-  }
-  return `#${entry.orderNumber}`;
-}
-
-function formatCreatedAt(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-  return date.toLocaleString();
-}
-
-function buildPayloadFields(entry: PrintHistoryEntry): PayloadField[] {
   const fields: PayloadField[] = [];
 
   if (entry.payload) {
     const order = entry.payload;
-    fields.push({ label: "Order ID", value: order.id });
-    fields.push({ label: "Order number", value: String(order.number) });
-    fields.push({ label: "Table", value: order.table });
-    fields.push({ label: "Created", value: formatCreatedAt(order.createdAt) });
+    fields.push({ label: t("history.orderId"), value: order.id });
+    fields.push({ label: t("history.orderNumber"), value: String(order.number) });
+    fields.push({ label: t("history.tableLabel"), value: order.table });
+    fields.push({ label: t("history.created"), value: formatDateTime(order.createdAt) });
   } else {
-    fields.push({ label: "Order ID", value: entry.orderId });
-    fields.push({ label: "Order number", value: String(entry.orderNumber) });
-    fields.push({ label: "Table", value: entry.table });
+    fields.push({ label: t("history.orderId"), value: entry.orderId });
+    fields.push({ label: t("history.orderNumber"), value: String(entry.orderNumber) });
+    fields.push({ label: t("history.tableLabel"), value: entry.table });
   }
 
-  fields.push({ label: "Source", value: SOURCE_LABELS[entry.source] });
-  fields.push({ label: "Status", value: STATUS_LABELS[entry.status] });
+  fields.push({ label: t("history.source"), value: sourceLabels[entry.source] });
+  fields.push({ label: t("history.status"), value: statusLabels[entry.status] });
 
   if (entry.error) {
-    fields.push({ label: "Error", value: entry.error });
+    fields.push({ label: t("history.error"), value: entry.error });
   }
 
-  return fields;
-}
-
-function PayloadDetails({ entry }: { entry: PrintHistoryEntry }) {
-  const fields = buildPayloadFields(entry);
   const items = entry.payload?.items ?? [];
 
   return (
@@ -130,7 +104,7 @@ function PayloadDetails({ entry }: { entry: PrintHistoryEntry }) {
       {items.length > 0 ? (
         <div>
           <p className="mb-2 font-medium text-[10px] text-zinc-500 uppercase tracking-wide">
-            Items
+            {t("history.items")}
           </p>
           <ul className="space-y-2">
             {items.map((item) => (
@@ -141,7 +115,9 @@ function PayloadDetails({ entry }: { entry: PrintHistoryEntry }) {
                 <p className="text-zinc-200">
                   {item.quantity}× {item.name}
                 </p>
-                {item.notes ? <p className="mt-1 text-zinc-500">Notes: {item.notes}</p> : null}
+                {item.notes ? (
+                  <p className="mt-1 text-zinc-500">{t("history.notes", { notes: item.notes })}</p>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -151,13 +127,40 @@ function PayloadDetails({ entry }: { entry: PrintHistoryEntry }) {
   );
 }
 
-export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
+export function PrintHistory({ entries, locale, onRetry }: PrintHistoryProps) {
+  const { t } = useTranslation();
+  const { formatTime } = useFormatDate(locale);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
 
+  const sourceLabels: Record<PrintHistorySource, string> = useMemo(
+    () => ({
+      realtime: t("history.sourceAuto"),
+      manual: t("history.sourceManual"),
+      test: t("history.sourceTest"),
+    }),
+    [t],
+  );
+
+  const statusLabels: Record<PrintHistoryStatus, string> = useMemo(
+    () => ({
+      received: t("history.statusReceived"),
+      printed: t("history.statusPrinted"),
+      failed: t("history.statusFailed"),
+    }),
+    [t],
+  );
+
   function toggleEntry(id: string) {
     setExpandedId((current) => (current === id ? null : id));
+  }
+
+  function formatOrderLabel(entry: PrintHistoryEntry): string {
+    if (entry.source === "test") {
+      return t("history.testPrint");
+    }
+    return `#${entry.orderNumber}`;
   }
 
   async function handleRetry(entry: PrintHistoryEntry, event: MouseEvent) {
@@ -168,11 +171,11 @@ export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
     try {
       const result = await window.scanbyPrint.retryPrint(entry.id);
       if (!result.ok) {
-        setRetryError("Print was skipped — duplicate order within 30s.");
+        setRetryError(t("history.retrySkipped"));
       }
       onRetry?.();
     } catch (e) {
-      setRetryError(e instanceof Error ? e.message : "Retry failed");
+      setRetryError(translateError(e, t) || t("errors.retryFailed"));
     } finally {
       setRetryingId(null);
     }
@@ -181,8 +184,10 @@ export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-medium text-sm text-zinc-200">Print history</h2>
-        <span className="text-xs text-zinc-500">{entries.length} / 10 recent</span>
+        <h2 className="font-medium text-sm text-zinc-200">{t("history.title")}</h2>
+        <span className="text-xs text-zinc-500">
+          {t("history.recentCount", { count: entries.length })}
+        </span>
       </div>
 
       {retryError ? (
@@ -193,7 +198,7 @@ export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
 
       {entries.length === 0 ? (
         <p className="rounded-lg border border-zinc-800/80 border-dashed px-4 py-8 text-center text-sm text-zinc-500">
-          No prints yet. Orders from your venue will appear here.
+          {t("history.empty")}
         </p>
       ) : (
         <ul className="space-y-2">
@@ -216,7 +221,7 @@ export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
                   <span
                     role="img"
                     className={`size-2 shrink-0 rounded-full ${statusDotClass(entry.status)}`}
-                    aria-label={STATUS_LABELS[entry.status]}
+                    aria-label={statusLabels[entry.status]}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -224,12 +229,14 @@ export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
                         {formatOrderLabel(entry)}
                       </span>
                       {entry.source !== "test" ? (
-                        <span className="truncate text-xs text-zinc-500">Table {entry.table}</span>
+                        <span className="truncate text-xs text-zinc-500">
+                          {t("history.table", { table: entry.table })}
+                        </span>
                       ) : null}
                       <span
                         className={`rounded-full border px-2 py-0.5 font-medium text-[10px] uppercase tracking-wide ${statusBadgeClass(entry.status)}`}
                       >
-                        {STATUS_LABELS[entry.status]}
+                        {statusLabels[entry.status]}
                       </span>
                     </div>
                     {entry.status === "failed" && entry.error && !expanded ? (
@@ -244,13 +251,13 @@ export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
                         disabled={retryingId === entry.id}
                         className="rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-primary text-xs transition hover:bg-primary/20 disabled:opacity-50"
                       >
-                        {retryingId === entry.id ? "..." : "Retry"}
+                        {retryingId === entry.id ? "..." : t("history.retry")}
                       </button>
                     ) : null}
                     <div className="text-right">
                       <p className="text-xs text-zinc-400">{formatTime(entry.printedAt)}</p>
                       <p className="text-[10px] text-zinc-600 uppercase tracking-wide">
-                        {SOURCE_LABELS[entry.source]}
+                        {sourceLabels[entry.source]}
                       </p>
                     </div>
                     <span
@@ -265,9 +272,9 @@ export function PrintHistory({ entries, onRetry }: PrintHistoryProps) {
                 {expanded ? (
                   <div className="border-zinc-800/80 border-t px-3 py-3">
                     <p className="mb-2 font-medium text-[10px] text-zinc-500 uppercase tracking-wide">
-                      Details
+                      {t("history.details")}
                     </p>
-                    <PayloadDetails entry={entry} />
+                    <PayloadDetails entry={entry} locale={locale} />
                   </div>
                 ) : null}
               </li>

@@ -1,4 +1,5 @@
-import type { PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
+import { useTranslation } from "react-i18next";
+import type { Locale, PrinterScanSnapshot, PrinterStatus } from "@/shared/types";
 import { PrinterActions } from "./printer-actions";
 
 type PrinterCardProps = {
@@ -6,14 +7,8 @@ type PrinterCardProps = {
   printerStatus: PrinterStatus;
   pendingPrinterPicker: string[] | null;
   lastScan: PrinterScanSnapshot | null;
+  locale: Locale;
   onUpdated: () => void;
-};
-
-const STATUS_LABELS: Record<PrinterStatus, string> = {
-  online: "Online",
-  offline: "Offline",
-  printing: "Printing",
-  scanning: "Scanning",
 };
 
 function statusDotClass(status: PrinterStatus): string {
@@ -34,13 +29,23 @@ export function PrinterCard({
   printerStatus,
   pendingPrinterPicker,
   lastScan,
+  locale,
   onUpdated,
 }: PrinterCardProps) {
+  const { t } = useTranslation();
+
+  const statusLabels: Record<PrinterStatus, string> = {
+    online: t("status.online"),
+    offline: t("status.offline"),
+    printing: t("status.printing"),
+    scanning: t("status.scanning"),
+  };
+
   return (
     <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
       <div>
-        <h2 className="font-medium text-sm text-zinc-200">Printer</h2>
-        <p className="mt-0.5 text-xs text-zinc-500">Network receipt printer</p>
+        <h2 className="font-medium text-sm text-zinc-200">{t("printer.title")}</h2>
+        <p className="mt-0.5 text-xs text-zinc-500">{t("printer.subtitle")}</p>
       </div>
 
       <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
@@ -49,10 +54,10 @@ export function PrinterCard({
           {printerIp ? (
             <>
               <p className="font-mono text-sm text-zinc-100">{printerIp}</p>
-              <p className="mt-0.5 text-xs text-zinc-500">{STATUS_LABELS[printerStatus]}</p>
+              <p className="mt-0.5 text-xs text-zinc-500">{statusLabels[printerStatus]}</p>
             </>
           ) : (
-            <p className="text-sm text-zinc-400">No printer configured</p>
+            <p className="text-sm text-zinc-400">{t("printer.noPrinterConfigured")}</p>
           )}
         </div>
       </div>
@@ -62,6 +67,7 @@ export function PrinterCard({
         printerStatus={printerStatus}
         pendingPrinterPicker={pendingPrinterPicker}
         lastScan={lastScan}
+        locale={locale}
         onUpdated={onUpdated}
       />
     </section>

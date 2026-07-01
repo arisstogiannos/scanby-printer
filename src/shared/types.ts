@@ -1,3 +1,7 @@
+import type { Locale } from "@/shared/i18n";
+
+export type { Locale };
+
 export type PrinterStatus = "online" | "offline" | "printing" | "scanning";
 
 export type AppConfig = {
@@ -86,6 +90,7 @@ export type UpdateState = {
 
 export type RendererAppState = AppStateSnapshot & {
   version: string;
+  locale: Locale;
   setupStage: SetupStage;
   paired: boolean;
   configured: boolean;

@@ -4,6 +4,7 @@ import { reconnectPrinter } from "@/services/printer-connection";
 import { isSupabaseSubscribed } from "@/services/supabase-listener";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { HEALTH_MONITOR_INTERVAL_MS, HEALTH_UNHEALTHY_THRESHOLD } from "@/shared/constants";
+import { t } from "@/shared/i18n";
 
 let monitorTimer: ReturnType<typeof setInterval> | null = null;
 let printerUnhealthyStreak = 0;
@@ -30,8 +31,10 @@ async function runHealthCheck(): Promise<void> {
     );
     if (printerUnhealthyStreak >= HEALTH_UNHEALTHY_THRESHOLD) {
       showTrayNotification(
-        "Printer offline",
-        `Printer at ${printerResult.ip ?? "unknown IP"} has been unreachable.`,
+        t("notifications.printerOffline"),
+        t("notifications.printerOfflineBody", {
+          ip: printerResult.ip ?? t("notifications.unknownIp"),
+        }),
       );
       printerUnhealthyStreak = 0;
     }
@@ -46,8 +49,8 @@ async function runHealthCheck(): Promise<void> {
     );
     if (supabaseUnhealthyStreak >= HEALTH_UNHEALTHY_THRESHOLD) {
       showTrayNotification(
-        "Order channel disconnected",
-        "Scanby is not receiving live orders. Check your internet connection.",
+        t("notifications.channelDisconnected"),
+        t("notifications.channelDisconnectedBody"),
       );
       supabaseUnhealthyStreak = 0;
     }

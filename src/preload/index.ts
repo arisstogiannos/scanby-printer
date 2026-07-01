@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { RendererAppState, UpdateState } from "@/shared/types";
+import type { Locale, RendererAppState, UpdateState } from "@/shared/types";
 
 export type { RendererAppState };
 
 const api = {
   getAppState: (): Promise<RendererAppState> => ipcRenderer.invoke("app:get-state"),
+  setLocale: (locale: Locale): Promise<RendererAppState> =>
+    ipcRenderer.invoke("app:set-locale", locale),
   onAppStateChange: (callback: (state: RendererAppState) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: RendererAppState) => {
       callback(state);

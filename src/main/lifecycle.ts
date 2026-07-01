@@ -15,7 +15,8 @@ import {
   startPrinterReconnectMonitor,
 } from "@/services/printer-reconnect";
 import { restartSupabaseListener, shutdownSupabaseListener } from "@/services/supabase-listener";
-import { initUserPreferences } from "@/services/user-preferences";
+import { getLocale, initUserPreferences } from "@/services/user-preferences";
+import { initI18n } from "@/shared/i18n";
 
 export function configureLogging(): void {
   log.transports.file.resolvePathFn = () => join(app.getPath("userData"), "logs", "main.log");
@@ -25,10 +26,12 @@ export function configureLogging(): void {
 
 export async function bootstrapServices(): Promise<void> {
   const userDataPath = app.getPath("userData");
+  const defaultLocale = app.getLocale().toLowerCase().startsWith("el") ? "el" : "en";
   initConfigStore(userDataPath);
   initPrintHistoryStore(userDataPath);
   initPendingPrintQueueStore(userDataPath);
-  initUserPreferences(userDataPath);
+  initUserPreferences(userDataPath, defaultLocale);
+  await initI18n(getLocale());
   initAutoLaunch();
 
   await startLocalServer();
