@@ -9,6 +9,7 @@ import { unpairApp } from "@/services/unpair";
 
 let tray: Tray | null = null;
 let quitHandler: (() => void) | null = null;
+let contextMenu: Menu | null = null;
 
 function buildMenu(): Menu {
   const snapshot = appState.getSnapshot();
@@ -81,7 +82,7 @@ function updateTrayIcon(): void {
   const snapshot = appState.getSnapshot();
   tray.setImage(iconForPrinterStatus(snapshot.printerStatus));
   tray.setToolTip(`Scanby Print Service — ${snapshot.printerStatus}`);
-  tray.setContextMenu(buildMenu());
+  contextMenu = buildMenu();
 }
 
 export function initTray(quitItem: { label: string; click: () => void }): Tray {
@@ -93,7 +94,7 @@ export function initTray(quitItem: { label: string; click: () => void }): Tray {
 
   tray = new Tray(iconForPrinterStatus("offline"));
   tray.setToolTip("Scanby Print Service");
-  tray.setContextMenu(buildMenu());
+  contextMenu = buildMenu();
 
   appState.on("change", () => {
     updateTrayIcon();
@@ -103,8 +104,16 @@ export function initTray(quitItem: { label: string; click: () => void }): Tray {
     updateTrayIcon();
   }
 
+  tray.on("click", () => {
+    showSetupWindow();
+  });
+
   tray.on("double-click", () => {
     showSetupWindow();
+  });
+
+  tray.on("right-click", () => {
+    tray?.popUpContextMenu(contextMenu ?? buildMenu());
   });
 
   return tray;

@@ -11,7 +11,7 @@ function getAutoLauncher(): AutoLaunch {
     autoLauncher = new AutoLaunch({
       name: AUTO_LAUNCH_APP_NAME,
       path: app.getPath("exe"),
-      isHidden: true,
+      isHidden: false,
     });
   }
   return autoLauncher;
@@ -28,7 +28,11 @@ export async function enableAutoLaunch(): Promise<void> {
   }
 
   try {
-    await getAutoLauncher().enable();
+    const launcher = getAutoLauncher();
+    if (await launcher.isEnabled()) {
+      await launcher.disable();
+    }
+    await launcher.enable();
     log.info("Auto-launch enabled", { exe: app.getPath("exe") });
   } catch (error) {
     log.error("Failed to enable auto-launch", error);

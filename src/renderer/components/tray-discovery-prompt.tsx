@@ -15,7 +15,7 @@ export function TrayDiscoveryPrompt({
         <div>
           <p className="font-medium text-primary">Setup complete</p>
           <p className="mt-2 text-sm text-zinc-300">
-            Scanby is running in the tray (near the clock). Double-click the tray icon to reopen.
+            Scanby is running in the tray (near the clock). Click the tray icon to reopen.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">

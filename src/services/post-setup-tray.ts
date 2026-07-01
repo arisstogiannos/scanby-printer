@@ -11,7 +11,7 @@ export function showPostSetupTrayDiscovery(): void {
 
   showTrayNotification(
     "Scanby is running in the tray",
-    "Near the clock. Double-click the tray icon to reopen.",
+    "Near the clock. Click the tray icon to reopen.",
   );
 
   pulseTrayIcon();
