@@ -129,6 +129,9 @@ export async function startSupabaseListener(): Promise<void> {
       .on("broadcast", { event: "order_created" }, ({ payload }) => {
         handleOrderEvent("order_created", payload as OrderPayload);
       })
+      .on("broadcast", { event: "order_reprint" }, ({ payload }) => {
+        handleOrderEvent("order_created", payload as OrderPayload);
+      })
       .on("broadcast", { event: "order_updated" }, ({ payload }) => {
         handleOrderEvent("order_updated", payload as OrderPayload);
       })
