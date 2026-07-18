@@ -24,8 +24,10 @@ async function testBuildTicketLines(): Promise<void> {
   assert.equal(created.headerLine, "ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ");
   assert.equal(created.tableLine, "ΤΡΑΠΕΖΙ 12  #7");
   assert.equal(created.itemLines.length, 2);
-  assert.match(created.itemLines[0].main, /16,00\s*€$/);
-  assert.match(created.itemLines[1].main, /2,50\s*€$/);
+  assert.equal(created.itemLines[0].label, "2x  Salad");
+  assert.match(created.itemLines[0].price ?? "", /16,00\s*€/);
+  assert.equal(created.itemLines[1].label, "1x  Water");
+  assert.match(created.itemLines[1].price ?? "", /2,50\s*€/);
   assert.equal(created.itemLines[0].note, "No onion");
   assert.equal(created.showItems, true);
   assert.match(created.totalLine ?? "", /18,50\s*€/);

@@ -29,8 +29,6 @@ function formatPreferencesNotes(notes?: string): string | undefined {
   return notes.trim();
 }
 
-const TICKET_LINE_WIDTH = 32;
-
 function formatCentsAsEur(totalCents: number, locale: Locale): string {
   return new Intl.NumberFormat(localeTag(locale), {
     style: "currency",
@@ -38,8 +36,8 @@ function formatCentsAsEur(totalCents: number, locale: Locale): string {
   }).format(totalCents / CENTS_PER_EUR);
 }
 
-function formatItemMainLine(item: PrintOrderItem, locale: Locale): string {
-  const left = `${item.quantity}x  ${item.name}`;
+function formatItemLine(item: PrintOrderItem, locale: Locale): { label: string; price?: string } {
+  const label = `${item.quantity}x  ${item.name}`;
 
   if (
     item.price === undefined ||
@@ -48,13 +46,13 @@ function formatItemMainLine(item: PrintOrderItem, locale: Locale): string {
     !Number.isFinite(item.quantity) ||
     item.quantity <= 0
   ) {
-    return left;
+    return { label };
   }
 
-  const lineTotalCents = item.quantity * item.price;
-  const priceText = formatCentsAsEur(lineTotalCents, locale);
-  const padding = Math.max(1, TICKET_LINE_WIDTH - left.length - priceText.length);
-  return `${left}${" ".repeat(padding)}${priceText}`;
+  return {
+    label,
+    price: formatCentsAsEur(item.quantity * item.price, locale),
+  };
 }
 
 function calculateOrderTotalCents(items: PrintOrderItem[]): number | undefined {
@@ -92,7 +90,7 @@ export function buildTicketLines(
 ): {
   headerLine: string;
   tableLine: string;
-  itemLines: Array<{ main: string; note?: string }>;
+  itemLines: Array<{ label: string; price?: string; note?: string }>;
   totalLine?: string;
   totalLabel: string;
   footerLine?: string;
@@ -117,7 +115,7 @@ export function buildTicketLines(
     headerLine: t(`tickets.event.${event}`),
     tableLine,
     itemLines: order.items.map((item) => ({
-      main: formatItemMainLine(item, locale),
+      ...formatItemLine(item, locale),
       note: formatPreferencesNotes(item.notes),
     })),
     totalLine:
@@ -155,6 +153,7 @@ async function renderOrder(
   printer.setTextNormal();
   printer.bold(false);
   printer.setTextDoubleHeight();
+
   printer.newLine();
 
   printer.bold(true);
@@ -164,11 +163,17 @@ async function renderOrder(
 
   if (showItems) {
     for (const item of itemLines) {
-      printer.alignLeft();
-      printer.println(item.main);
-      if (item.note) {
-        printer.println(`     > ${item.note}`);
+      if (item.price) {
+        printer.leftRight(item.label, item.price);
+      } else {
+        printer.alignLeft();
+        printer.println(item.label);
       }
+      if (item.note) {
+        printer.alignLeft();
+        printer.println(`  > ${item.note}`);
+      }
+      printer.newLine();
     }
     printer.drawLine();
   }
@@ -190,8 +195,8 @@ async function renderOrder(
   }
 
   printer.alignCenter();
-  printer.println(timeLine);
   printer.setTextNormal();
+  printer.println(timeLine);
   printer.cut();
 }
 
