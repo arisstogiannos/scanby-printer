@@ -19,6 +19,8 @@ export type PairPayload = {
   supabasePublishableKey: string;
 };
 
+export type PrintFontSize = "default" | "big";
+
 export type PrintOrderItem = {
   quantity: number;
   name: string;
@@ -32,6 +34,8 @@ export type PrintOrder = {
   table: string;
   items: PrintOrderItem[];
   createdAt: string;
+  createdByName?: string | null;
+  fontSize?: PrintFontSize;
 };
 
 export type StatusResponse = {
@@ -59,7 +63,54 @@ export type AppStateSnapshot = {
 
 export type SetupStage = "waiting-pair" | "printer-setup" | "complete";
 
-export type OrderPrintEvent = "order_created" | "order_updated" | "order_cancelled";
+export type OrderPrintEvent =
+  | "order_created"
+  | "order_updated"
+  | "order_cancelled"
+  | "order_reprint";
+
+export type ReceiptPrintEvent = "receipt_created" | "receipt_reprint";
+
+export type PrintReceiptLine = {
+  name: string;
+  quantity: number;
+  totalInCents: number;
+  rateBps: number;
+};
+
+export type PrintReceiptVatRow = {
+  rateBps: number;
+  netInCents: number;
+  vatInCents: number;
+  grossInCents: number;
+};
+
+export type PrintReceiptSignature = {
+  caption: string;
+  data: string;
+  format: number;
+};
+
+export type PrintReceipt = {
+  id: string;
+  businessName: string;
+  legalName: string;
+  vatId: string;
+  address: string | null;
+  title: string;
+  series: string;
+  aa: number;
+  momentIso: string;
+  cashierName: string | null;
+  customer: { name: string; vatId: string; street?: string; zip?: string; city?: string } | null;
+  lines: PrintReceiptLine[];
+  vatRows: PrintReceiptVatRow[];
+  totalInCents: number;
+  payMethodLabel: string;
+  transmissionFailure: 1 | 2 | null;
+  signatures: PrintReceiptSignature[];
+  qrUrl: string | null;
+};
 
 export type PrintHistorySource = "realtime" | "manual" | "test";
 

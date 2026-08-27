@@ -7,3 +7,4 @@ release
 Thumbs.db
 .env
 .env.local
+graphify-out

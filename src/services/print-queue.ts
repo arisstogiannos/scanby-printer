@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import log from "electron-log";
 import { flashTrayIconRed } from "@/main/tray-effects";
+import { claimOrderAutoPrint } from "@/services/claim-order-auto-print";
 import { getConfig } from "@/services/config-store";
 import {
   loadPendingJobs,
@@ -27,6 +28,7 @@ type QueueJob = {
   historyEntryId: string | null;
   enqueuedAt: number;
   retryCount: number;
+  claimAcquired: boolean;
 };
 
 function buildCancelOrder(orderId: string, order?: PrintOrder | null): PrintOrder {
@@ -54,15 +56,23 @@ function toPersistedJob(job: QueueJob): PersistedQueueJob {
     historyEntryId: job.historyEntryId,
     enqueuedAt: job.enqueuedAt,
     retryCount: job.retryCount,
+    ...(job.claimAcquired ? { claimAcquired: true } : {}),
   };
 }
 
 function fromPersistedJob(job: PersistedQueueJob): QueueJob {
-  return { ...job };
+  return {
+    ...job,
+    claimAcquired: job.claimAcquired === true,
+  };
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function requiresAutoPrintClaim(job: QueueJob): boolean {
+  return job.event === "order_created" && job.source === "realtime";
 }
 
 function formatFailureReason(errorMessage: string): string {
@@ -178,6 +188,7 @@ class PrintQueue {
       historyEntryId,
       enqueuedAt: now,
       retryCount: 0,
+      claimAcquired: false,
     };
 
     this.queue.push(job);
@@ -229,6 +240,47 @@ class PrintQueue {
         this.queue.unshift(job);
         this.persistQueue();
         break;
+      }
+
+      if (requiresAutoPrintClaim(job) && !job.claimAcquired && process.env.PRINT_CLAIM_SECRET) {
+        const claimResult = await claimOrderAutoPrint(job.order.id);
+
+        if (claimResult === "claimed") {
+          job.claimAcquired = true;
+          this.persistQueue();
+        } else if (claimResult === "retry") {
+          job.retryCount += 1;
+          if (job.retryCount <= PRINT_RETRY_DELAYS_MS.length) {
+            const delay =
+              PRINT_RETRY_DELAYS_MS[job.retryCount - 1] ??
+              PRINT_RETRY_DELAYS_MS[PRINT_RETRY_DELAYS_MS.length - 1];
+            log.warn(
+              `Auto-print claim failed for order ${job.order.id}, retry ${job.retryCount}/${PRINT_RETRY_DELAYS_MS.length} in ${delay}ms`,
+            );
+            this.scheduleRetry(job, delay);
+            continue;
+          }
+
+          log.error(
+            `Auto-print claim failed for order ${job.order.id} after ${PRINT_RETRY_DELAYS_MS.length + 1} attempts`,
+          );
+          if (job.historyEntryId) {
+            updatePrintStatus(job.historyEntryId, "failed", "Auto-print claim failed");
+          }
+          this.persistQueue();
+          continue;
+        } else {
+          const reason =
+            claimResult === "unavailable"
+              ? "Auto-print not configured"
+              : "Auto-print claim not acquired";
+          log.info(`Skipping print for order ${job.order.id} — ${reason}`);
+          if (job.historyEntryId) {
+            updatePrintStatus(job.historyEntryId, "failed", reason);
+          }
+          this.persistQueue();
+          continue;
+        }
       }
 
       try {

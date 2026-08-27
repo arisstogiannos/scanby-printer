@@ -196,6 +196,7 @@
     "channelDisconnected": "Το κανάλι παραγγελιών αποσυνδέθηκε",
     "channelDisconnectedBody": "Το Scanby δεν λαμβάνει ζωντανές παραγγελίες. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο.",
     "orderFailed": "Η παραγγελία #{{number}} απέτυχε",
+    "receiptFailed": "Η απόδειξη {{series}} {{aa}} απέτυχε",
     "updateReady": "Ενημέρωση έτοιμη",
     "updateReadyBody": "Η έκδοση {{version}} είναι έτοιμη. Επανεκκινήστε για εγκατάσταση."
   },
@@ -204,15 +205,21 @@
     "testPrintOk": "Δοκιμαστική εκτύπωση OK",
     "total": "ΣΥΝΟΛΟ",
     "table": "ΤΡΑΠΕΖΙ {{table}}{{suffix}}",
+    "staff": "Staff: {{name}}",
     "order": "ΠΑΡΑΓΓΕΛΙΑ {{id}}",
     "event": {
       "order_created": "ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ",
       "order_updated": "ΕΝΗΜΕΡΩΣΗ",
-      "order_cancelled": "ΑΚΥΡΩΣΗ"
+      "order_cancelled": "ΑΚΥΡΩΣΗ",
+      "order_reprint": "ΕΠΑΝΕΚΤΥΠΩΣΗ"
     },
     "footer": {
       "order_updated": "ΕΠΑΝΕΚΤΥΠΩΣΗ",
       "order_cancelled": "Η παραγγελία ακυρώθηκε"
-    }
+    },
+    "footerOrderNumber": "Παραγγελία #{{number}}",
+    "footerThankYou": "Ευχαριστούμε!",
+    "footerNotFiscal": "Δεν αποτελεί φορολογική απόδειξη",
+    "footerPoweredBy": "Powered by Scanby"
   }
 }

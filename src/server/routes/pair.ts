@@ -5,6 +5,7 @@ import { getConfig, savePairing } from "@/services/config-store";
 import { retainHistoryForBusiness } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
 import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
+import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import { restartSupabaseListener } from "@/services/supabase-listener";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { hasSeenPairNotification, markPairNotificationSeen } from "@/services/user-preferences";
@@ -24,6 +25,7 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
     if (previousBusinessId !== payload.businessId) {
       retainHistoryForBusiness(payload.businessId);
       printQueue.clear();
+      receiptPrintQueue.clear();
     }
     appState.setPaired(payload.businessName);
     await restartSupabaseListener();

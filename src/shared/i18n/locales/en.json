@@ -196,6 +196,7 @@
     "channelDisconnected": "Order channel disconnected",
     "channelDisconnectedBody": "Scanby is not receiving live orders. Check your internet connection.",
     "orderFailed": "Order #{{number}} failed",
+    "receiptFailed": "Receipt {{series}} {{aa}} failed",
     "updateReady": "Update ready",
     "updateReadyBody": "Version {{version}} is ready. Restart to install."
   },
@@ -204,15 +205,21 @@
     "testPrintOk": "Test print OK",
     "total": "TOTAL",
     "table": "TABLE {{table}}{{suffix}}",
+    "staff": "Staff: {{name}}",
     "order": "ORDER {{id}}",
     "event": {
       "order_created": "NEW ORDER",
       "order_updated": "ORDER UPDATE",
-      "order_cancelled": "CANCELLED"
+      "order_cancelled": "CANCELLED",
+      "order_reprint": "REPRINT"
     },
     "footer": {
       "order_updated": "REPRINT",
       "order_cancelled": "Order was cancelled"
-    }
+    },
+    "footerOrderNumber": "Order #{{number}}",
+    "footerThankYou": "Thank you!",
+    "footerNotFiscal": "Not a tax receipt",
+    "footerPoweredBy": "Powered by Scanby"
   }
 }

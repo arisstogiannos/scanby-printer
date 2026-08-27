@@ -1,4 +1,4 @@
-import type { PrintOrder, PrintOrderItem } from "@/shared/types";
+import type { PrintFontSize, PrintOrder, PrintOrderItem } from "@/shared/types";
 
 function parsePrice(value: unknown): number | undefined {
   const numeric =
@@ -12,6 +12,10 @@ function parsePrice(value: unknown): number | undefined {
     return undefined;
   }
   return Math.round(numeric);
+}
+
+function parseFontSize(value: unknown): PrintFontSize | undefined {
+  return value === "big" || value === "default" ? value : undefined;
 }
 
 function mapItem(raw: unknown): PrintOrderItem | null {
@@ -70,6 +74,8 @@ export function normalizePrintOrder(body: unknown): PrintOrder | null {
       number: o.number,
       table: o.table,
       createdAt: o.createdAt,
+      createdByName: typeof o.createdByName === "string" ? o.createdByName : null,
+      fontSize: parseFontSize(o.fontSize),
       items: mapItems(o.items),
     };
   }
@@ -80,6 +86,7 @@ export function normalizePrintOrder(body: unknown): PrintOrder | null {
       number: typeof o.order_number === "number" ? o.order_number : 0,
       table: o.table_number,
       createdAt: typeof o.created_at === "string" ? o.created_at : new Date().toISOString(),
+      fontSize: parseFontSize(o.fontSize ?? o.font_size),
       items: mapItems(o.items),
     };
   }

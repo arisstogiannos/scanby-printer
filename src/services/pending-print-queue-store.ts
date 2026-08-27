@@ -10,6 +10,7 @@ export type PersistedQueueJob = {
   historyEntryId: string | null;
   enqueuedAt: number;
   retryCount: number;
+  claimAcquired?: boolean;
 };
 
 let userDataPath = "";
@@ -44,11 +45,15 @@ function isValidJob(value: unknown): value is PersistedQueueJob {
   return (
     typeof o.id === "string" &&
     isValidPrintOrder(o.order) &&
-    (o.event === "order_created" || o.event === "order_updated" || o.event === "order_cancelled") &&
+    (o.event === "order_created" ||
+      o.event === "order_updated" ||
+      o.event === "order_cancelled" ||
+      o.event === "order_reprint") &&
     (o.source === "realtime" || o.source === "manual" || o.source === "test") &&
     (o.historyEntryId === null || typeof o.historyEntryId === "string") &&
     typeof o.enqueuedAt === "number" &&
-    typeof o.retryCount === "number"
+    typeof o.retryCount === "number" &&
+    (o.claimAcquired === undefined || typeof o.claimAcquired === "boolean")
   );
 }
 

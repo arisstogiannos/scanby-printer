@@ -30,7 +30,7 @@ Review of the current Electron app (v1.0.11): tray-first kitchen ticket printer 
 
 
 
-#### 1. Post-setup tray discovery
+#### 1. Post-setup tray discovery ✅
 
 After **Save & Start**, window hides. Many users lose the tray icon.
 
@@ -49,7 +49,7 @@ After **Save & Start**, window hides. Many users lose the tray icon.
 
 
 
-#### 3. Pairing success moment
+#### 3. Pairing success moment ✅
 
 When `paired` flips true, transition is instant with no feedback.
 
@@ -58,26 +58,7 @@ When `paired` flips true, transition is instant with no feedback.
 
 
 
-#### 4. Combine Test Print → Save when test passes
-
-Today: Test Print and Save & Start are separate. Staff often forget Save.
-
-- After successful test: enable **Save & Start** with emphasis, or auto-offer *"Test passed — start printing?"* single button.
-- Consider: successful test auto-saves when only one printer found (with confirm).
-
-
-
-#### 5. Show connection health, not just printer
-
-UI shows printer status only. Supabase disconnect = silent missed orders.
-
-- Add row: **Orders feed: Connected / Reconnecting / Disconnected**
-- Tray menu: same line item.
-- Red badge on tray icon when feed offline but printer online (dangerous silent failure).
-
-
-
-#### 6. Failed print visibility
+#### 6. Failed print visibility ✅
 
 Failures only appear in collapsed history.
 
@@ -103,7 +84,7 @@ Subnet scan probes 254 hosts — UI shows only *"Scanning..."*.
 
 
 
-#### 8. Replace polling with push updates
+#### 8. Replace polling with push updates ✅
 
 Renderer polls `getAppState` every 1.5s.
 
@@ -143,7 +124,7 @@ Complete stage is read-only except reconnect/rescan. Missing controls:
 
 
 
-#### 12. Update UX in app
+#### 12. Update UX in app ✅
 
 `electron-updater` runs silently; Store builds skip it entirely.
 

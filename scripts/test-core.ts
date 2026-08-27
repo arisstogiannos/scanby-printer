@@ -14,6 +14,7 @@ async function testBuildTicketLines(): Promise<void> {
     number: 7,
     table: "12",
     createdAt: "2026-06-11T10:30:00.000Z",
+    createdByName: "Maria",
     items: [
       { quantity: 2, name: "Salad", price: 800, notes: "No onion" },
       { quantity: 1, name: "Water", price: 250 },
@@ -23,6 +24,7 @@ async function testBuildTicketLines(): Promise<void> {
   const created = buildTicketLines(order, "order_created", "el");
   assert.equal(created.headerLine, "ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ");
   assert.equal(created.tableLine, "ΤΡΑΠΕΖΙ 12  #7");
+  assert.equal(created.staffLine, "Staff: Maria");
   assert.equal(created.itemLines.length, 2);
   assert.equal(created.itemLines[0].label, "2x  Salad");
   assert.match(created.itemLines[0].price ?? "", /16,00\s*€/);
@@ -31,7 +33,11 @@ async function testBuildTicketLines(): Promise<void> {
   assert.equal(created.itemLines[0].note, "No onion");
   assert.equal(created.showItems, true);
   assert.match(created.totalLine ?? "", /18,50\s*€/);
-  assert.ok(created.timeLine.length > 0);
+  assert.equal(created.totalLabel, "ΣΥΝΟΛΟ");
+  assert.equal(created.footerLine, undefined);
+  assert.match(created.timeLine, /\d/);
+  assert.equal(created.notFiscalLine, "Δεν αποτελεί φορολογική απόδειξη");
+  assert.equal(created.poweredByLine, "Powered by Scanby");
 
   const updated = buildTicketLines(order, "order_updated", "el");
   assert.equal(updated.headerLine, "ΕΝΗΜΕΡΩΣΗ");
@@ -43,6 +49,9 @@ async function testBuildTicketLines(): Promise<void> {
   assert.equal(cancelled.footerLine, "Η παραγγελία ακυρώθηκε");
   assert.equal(cancelled.showItems, false);
   assert.equal(cancelled.totalLine, undefined);
+
+  const noStaff = buildTicketLines({ ...order, createdByName: "   " }, "order_created", "el");
+  assert.equal(noStaff.staffLine, undefined);
 
   const noPrices = buildTicketLines(
     {
@@ -84,6 +93,26 @@ function testDashboardPrintPayload(): void {
   assert.equal(order?.table, "5");
   assert.equal(order?.number, 12);
   assert.equal(order?.items[0]?.price, 350);
+  assert.equal(order?.fontSize, undefined);
+
+  const baseOrder = {
+    id: "order-3",
+    number: 4,
+    table: "9",
+    createdAt: "2026-06-11T12:00:00.000Z",
+    items: [{ quantity: 1, name: "Tea" }],
+  };
+
+  assert.equal(normalizePrintOrder({ order: { ...baseOrder, fontSize: "big" } })?.fontSize, "big");
+  assert.equal(
+    normalizePrintOrder({ order: { ...baseOrder, fontSize: "default" } })?.fontSize,
+    "default",
+  );
+  assert.equal(
+    normalizePrintOrder({ order: { ...baseOrder, fontSize: "huge" } })?.fontSize,
+    undefined,
+  );
+  assert.equal(normalizePrintOrder({ order: baseOrder })?.fontSize, undefined);
 }
 
 function testConstants(): void {

@@ -2,16 +2,22 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from "@supaba
 import log from "electron-log";
 import { getConfig } from "@/services/config-store";
 import { printQueue } from "@/services/print-queue";
+import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import {
   CHANNEL_PREFIX,
   SUPABASE_RECONNECT_BASE_MS,
   SUPABASE_RECONNECT_MAX_MS,
 } from "@/shared/constants";
 import { normalizePrintOrder } from "@/shared/print-payload";
-import type { OrderPrintEvent } from "@/shared/types";
+import { normalizePrintReceipt } from "@/shared/receipt-payload";
+import type { OrderPrintEvent, ReceiptPrintEvent } from "@/shared/types";
 
 type OrderPayload = {
   order?: unknown;
+};
+
+type ReceiptPayload = {
+  receipt?: unknown;
 };
 
 type CancelPayload = {
@@ -81,6 +87,7 @@ function handleOrderEvent(event: OrderPrintEvent, payload: OrderPayload): void {
     log.warn(`Received invalid ${event} payload`);
     return;
   }
+
   printQueue.enqueue(order, { event });
 }
 
@@ -92,6 +99,16 @@ function handleOrderCancelled(payload: CancelPayload): void {
     return;
   }
   printQueue.enqueueCancel(orderId.trim());
+}
+
+function handleReceiptEvent(event: ReceiptPrintEvent, payload: ReceiptPayload): void {
+  log.info(`handleReceiptEvent: ${event}`, payload);
+  const receipt = normalizePrintReceipt(payload.receipt ?? payload);
+  if (!receipt) {
+    log.warn(`Received invalid ${event} payload`);
+    return;
+  }
+  receiptPrintQueue.enqueue(receipt, { event });
 }
 
 export async function startSupabaseListener(): Promise<void> {
@@ -130,7 +147,7 @@ export async function startSupabaseListener(): Promise<void> {
         handleOrderEvent("order_created", payload as OrderPayload);
       })
       .on("broadcast", { event: "order_reprint" }, ({ payload }) => {
-        handleOrderEvent("order_created", payload as OrderPayload);
+        handleOrderEvent("order_reprint", payload as OrderPayload);
       })
       .on("broadcast", { event: "order_updated" }, ({ payload }) => {
         handleOrderEvent("order_updated", payload as OrderPayload);
@@ -140,6 +157,12 @@ export async function startSupabaseListener(): Promise<void> {
       })
       .on("broadcast", { event: "new_order" }, ({ payload }) => {
         handleOrderEvent("order_created", payload as OrderPayload);
+      })
+      .on("broadcast", { event: "receipt_created" }, ({ payload }) => {
+        handleReceiptEvent("receipt_created", payload as ReceiptPayload);
+      })
+      .on("broadcast", { event: "receipt_reprint" }, ({ payload }) => {
+        handleReceiptEvent("receipt_reprint", payload as ReceiptPayload);
       })
       .subscribe((status) => {
         if (tearingDown) {
