@@ -19,6 +19,14 @@ function parseCents(value: unknown): number | null {
   return Math.round(numeric);
 }
 
+/**
+ * A wire string that only counts when it carries something. Absent, null and
+ * "" all mean the same thing to a renderer: skip the row.
+ */
+function optionalText(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
 function mapLine(raw: unknown): PrintReceiptLine | null {
   if (raw === null || typeof raw !== "object") {
     return null;
@@ -45,6 +53,8 @@ function mapLine(raw: unknown): PrintReceiptLine | null {
     quantity: line.quantity,
     totalInCents,
     rateBps: line.rateBps,
+    quantityLabel: optionalText(line.quantityLabel),
+    discountInCents: Math.max(0, parseCents(line.discountInCents) ?? 0),
   };
 }
 
@@ -173,10 +183,14 @@ export function normalizePrintReceipt(body: unknown): PrintReceipt | null {
     momentIso: receipt.momentIso,
     cashierName: typeof receipt.cashierName === "string" ? receipt.cashierName : null,
     customer: mapCustomer(receipt.customer),
+    comments: optionalText(receipt.comments),
     lines,
     vatRows,
+    discountInCents: Math.max(0, parseCents(receipt.discountInCents) ?? 0),
     totalInCents,
     payMethodLabel: receipt.payMethodLabel,
+    area: optionalText(receipt.area),
+    footnote: optionalText(receipt.footnote),
     transmissionFailure,
     signatures,
     qrUrl: typeof receipt.qrUrl === "string" ? receipt.qrUrl : null,

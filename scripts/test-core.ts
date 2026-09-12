@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { buildTicketLines } from "../src/services/printer-service";
+import type { ThermalPrinter } from "node-thermal-printer";
+import { buildTicketLines, renderReceipt } from "../src/services/printer-service";
 import { PRINT_DEDUPE_MS } from "../src/shared/constants";
 import { initI18n } from "../src/shared/i18n";
 import { normalizePairPayload } from "../src/shared/pair-payload";
 import { normalizePrintOrder } from "../src/shared/print-payload";
 import { normalizePrinterConnectPayload } from "../src/shared/printer-connect-payload";
+import { normalizePrintReceipt } from "../src/shared/receipt-payload";
 
 async function testBuildTicketLines(): Promise<void> {
   await initI18n("el");
@@ -115,6 +117,189 @@ function testDashboardPrintPayload(): void {
   assert.equal(normalizePrintOrder({ order: baseOrder })?.fontSize, undefined);
 }
 
+/** An 8.6 Δελτίο Παραγγελίας as the app puts it on the wire. */
+const ORDER_SLIP_PAYLOAD = {
+  id: "receipt-1",
+  businessName: "Kafeneio",
+  legalName: "KAFENEIO AE",
+  vatId: "123456789",
+  address: "Ermou 1",
+  title: "ΔΕΛΤΙΟ ΠΑΡΑΓΓΕΛΙΑΣ",
+  series: "A",
+  aa: 42,
+  momentIso: "2026-06-11T10:30:00.000Z",
+  cashierName: "Maria",
+  customer: null,
+  lines: [{ name: "Freddo", quantity: 2, quantityLabel: "2x", totalInCents: 700, rateBps: 1300 }],
+  comments: null,
+  discountInCents: 0,
+  vatRows: [{ rateBps: 1300, netInCents: 619, vatInCents: 81, grossInCents: 700 }],
+  totalInCents: 700,
+  payMethodLabel: "",
+  area: "12",
+  footnote: "Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ",
+  transmissionFailure: null,
+  signatures: [{ caption: "invoiceMark", data: "400001", format: 1 }],
+  qrUrl: "https://scanby.cloud/r/abc",
+};
+
+function testOrderSlipReceiptPayload(): void {
+  const slip = normalizePrintReceipt({ receipt: ORDER_SLIP_PAYLOAD });
+  assert.ok(slip);
+  // The table and the footnote are the whole reason a slip differs from a
+  // receipt; dropping either silently is what this test exists to catch.
+  assert.equal(slip?.area, "12");
+  assert.equal(slip?.footnote, "Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ");
+  // Empty, so the renderer prints no payment row at all.
+  assert.equal(slip?.payMethodLabel, "");
+
+  // A receipt omits both, and an older app build sends neither.
+  const receipt = normalizePrintReceipt({
+    receipt: { ...ORDER_SLIP_PAYLOAD, payMethodLabel: "ΜΕΤΡΗΤΑ", area: null, footnote: null },
+  });
+  assert.equal(receipt?.area, null);
+  assert.equal(receipt?.footnote, null);
+  assert.equal(receipt?.payMethodLabel, "ΜΕΤΡΗΤΑ");
+
+  const legacy = normalizePrintReceipt({
+    receipt: { ...ORDER_SLIP_PAYLOAD, area: undefined, footnote: undefined },
+  });
+  assert.ok(legacy);
+  assert.equal(legacy?.area, null);
+  assert.equal(legacy?.footnote, null);
+}
+
+type RenderCall = { method: string; args: unknown[] };
+
+/**
+ * Stands in for a ThermalPrinter and records what the layout asked it to do.
+ * `getText()` on a real one returns PC737-encoded bytes, so the Greek is
+ * unreadable there — the call log is what can actually be asserted on.
+ */
+function recordingPrinter(): { calls: RenderCall[]; printer: ThermalPrinter } {
+  const calls: RenderCall[] = [];
+  const printer = new Proxy(
+    {},
+    {
+      get:
+        (_target, method: string) =>
+        (...args: unknown[]) => {
+          calls.push({ method, args });
+        },
+    },
+  ) as ThermalPrinter;
+  return { calls, printer };
+}
+
+function printedLines(calls: RenderCall[]): string[] {
+  return calls.filter((call) => call.method === "println").map((call) => String(call.args[0]));
+}
+
+async function testOrderSlipLayout(): Promise<void> {
+  const slip = normalizePrintReceipt({ receipt: ORDER_SLIP_PAYLOAD });
+  assert.ok(slip);
+
+  const { calls, printer } = recordingPrinter();
+  await renderReceipt(printer, slip);
+  const lines = printedLines(calls);
+
+  assert.ok(lines.includes("ΤΡΑΠΕΖΙ: 12"), "slip must print its table");
+  assert.ok(
+    lines.includes("Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ"),
+    "slip must say the receipt follows at settlement",
+  );
+  // The old layout printed a bare amount against an empty label here.
+  const payRows = calls.filter((call) => call.method === "leftRight" && call.args[0] === "");
+  assert.equal(payRows.length, 0, "a slip collects nothing, so it prints no payment row");
+
+  const receiptOnly = normalizePrintReceipt({
+    receipt: { ...ORDER_SLIP_PAYLOAD, payMethodLabel: "ΜΕΤΡΗΤΑ", area: null, footnote: null },
+  });
+  assert.ok(receiptOnly);
+  const plain = recordingPrinter();
+  await renderReceipt(plain.printer, receiptOnly);
+  const plainLines = printedLines(plain.calls);
+
+  assert.ok(!plainLines.some((line) => line.startsWith("ΤΡΑΠΕΖΙ")));
+  assert.ok(!plainLines.includes("Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ"));
+  assert.ok(
+    plain.calls.some((call) => call.method === "leftRight" && call.args[0] === "ΜΕΤΡΗΤΑ"),
+    "a receipt still prints its payment row",
+  );
+}
+
+/** A weighed line, discounted, with a note — none of which used to print. */
+const WEIGHED_RECEIPT_PAYLOAD = {
+  ...ORDER_SLIP_PAYLOAD,
+  title: "ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ ΠΩΛΗΣΗΣ",
+  payMethodLabel: "ΜΕΤΡΗΤΑ",
+  area: null,
+  footnote: null,
+  comments: "Χωρίς σακούλα",
+  lines: [
+    {
+      name: "Κιμάς",
+      quantity: 2.5,
+      quantityLabel: "2,5 ΚΙΛ",
+      totalInCents: 1800,
+      discountInCents: 200,
+      rateBps: 1300,
+    },
+  ],
+  discountInCents: 200,
+  totalInCents: 1800,
+};
+
+function leftRightRow(calls: RenderCall[], left: string): string | undefined {
+  const call = calls.find((entry) => entry.method === "leftRight" && entry.args[0] === left);
+  return call === undefined ? undefined : String(call.args[1]);
+}
+
+async function testWeighedDiscountedLayout(): Promise<void> {
+  const receipt = normalizePrintReceipt({ receipt: WEIGHED_RECEIPT_PAYLOAD });
+  assert.ok(receipt);
+  assert.equal(receipt?.lines[0]?.quantityLabel, "2,5 ΚΙΛ");
+  assert.equal(receipt?.lines[0]?.discountInCents, 200);
+
+  const { calls, printer } = recordingPrinter();
+  await renderReceipt(printer, receipt);
+
+  // AADE is told 2,5 ΚΙΛ, so the paper may not say "2x" or drop the amount.
+  const item = calls.find(
+    (call) => call.method === "leftRight" && String(call.args[0]).includes("Κιμάς"),
+  );
+  assert.equal(item?.args[0], "2,5 ΚΙΛ Κιμάς (13%)");
+
+  assert.equal(leftRightRow(calls, "  ΕΚΠΤΩΣΗ"), "20.00€ - 2.00€");
+  assert.equal(leftRightRow(calls, "ΣΥΝΟΛΙΚΗ ΕΚΠΤΩΣΗ"), "-2.00€");
+
+  const lines = printedLines(calls);
+  assert.ok(lines.includes("ΠΑΡΑΤΗΡΗΣΕΙΣ"));
+  assert.ok(lines.includes("Χωρίς σακούλα"));
+}
+
+/** A build that predates `quantityLabel` still prints its piece count. */
+async function testLegacyQuantityFallback(): Promise<void> {
+  const receipt = normalizePrintReceipt({
+    receipt: {
+      ...ORDER_SLIP_PAYLOAD,
+      lines: [{ name: "Freddo", quantity: 2, totalInCents: 700, rateBps: 1300 }],
+    },
+  });
+  assert.ok(receipt);
+  assert.equal(receipt?.lines[0]?.quantityLabel, null);
+  assert.equal(receipt?.lines[0]?.discountInCents, 0);
+
+  const { calls, printer } = recordingPrinter();
+  await renderReceipt(printer, receipt);
+  const item = calls.find(
+    (call) => call.method === "leftRight" && String(call.args[0]).includes("Freddo"),
+  );
+  assert.equal(item?.args[0], "2x Freddo (13%)");
+  assert.equal(leftRightRow(calls, "  ΕΚΠΤΩΣΗ"), undefined);
+  assert.equal(leftRightRow(calls, "ΣΥΝΟΛΙΚΗ ΕΚΠΤΩΣΗ"), undefined);
+}
+
 function testConstants(): void {
   assert.equal(PRINT_DEDUPE_MS, 30_000);
 }
@@ -137,5 +322,9 @@ await testBuildTicketLines();
 testDashboardPairPayload();
 testDashboardPrintPayload();
 testPrinterConnectPayload();
+testOrderSlipReceiptPayload();
+await testOrderSlipLayout();
+await testWeighedDiscountedLayout();
+await testLegacyQuantityFallback();
 testConstants();
 console.log("Core tests passed");

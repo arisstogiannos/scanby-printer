@@ -326,7 +326,8 @@ function createReceiptPrinter(printerIp: string): ThermalPrinter {
   return createPrinter(printerIp, "el");
 }
 
-async function renderReceipt(printer: ThermalPrinter, receipt: PrintReceipt): Promise<void> {
+/** Exported for the layout test, the same way `buildTicketLines` is. */
+export async function renderReceipt(printer: ThermalPrinter, receipt: PrintReceipt): Promise<void> {
   printer.alignCenter();
   printer.bold(true);
   printer.println(receipt.legalName.toUpperCase());
@@ -342,6 +343,10 @@ async function renderReceipt(printer: ThermalPrinter, receipt: PrintReceipt): Pr
   printer.bold(false);
 
   printer.leftRight(`${receipt.series} ${receipt.aa}`, formatReceiptMoment(receipt.momentIso));
+
+  if (receipt.area) {
+    printer.println(`ΤΡΑΠΕΖΙ: ${receipt.area}`);
+  }
 
   if (receipt.cashierName) {
     printer.println(`Χειριστής: ${receipt.cashierName}`);
@@ -360,9 +365,23 @@ async function renderReceipt(printer: ThermalPrinter, receipt: PrintReceipt): Pr
 
   printer.drawLine();
   for (const line of receipt.lines) {
-    const qtyPrefix = line.quantity > 1 ? `${line.quantity}x ` : "";
-    const label = `${qtyPrefix}${line.name} (${formatVatRate(line.rateBps)})`;
-    printer.leftRight(label, formatReceiptEuro(line.totalInCents));
+    // An older app build sends no label; fall back to its piece-count prefix.
+    const quantity = line.quantityLabel ?? (line.quantity > 1 ? `${line.quantity}x` : "");
+    const prefix = quantity ? `${quantity} ` : "";
+    printer.leftRight(
+      `${prefix}${line.name} (${formatVatRate(line.rateBps)})`,
+      formatReceiptEuro(line.totalInCents),
+    );
+
+    // What it would have cost and what came off — "€18.00" with no explanation
+    // is the part customers query.
+    if (line.discountInCents > 0) {
+      const listInCents = line.totalInCents + line.discountInCents;
+      printer.leftRight(
+        "  ΕΚΠΤΩΣΗ",
+        `${formatReceiptEuro(listInCents)} - ${formatReceiptEuro(line.discountInCents)}`,
+      );
+    }
   }
 
   if (receipt.vatRows.length > 0) {
@@ -378,11 +397,31 @@ async function renderReceipt(printer: ThermalPrinter, receipt: PrintReceipt): Pr
     }
   }
 
+  if (receipt.discountInCents > 0) {
+    printer.alignLeft();
+    printer.leftRight("ΣΥΝΟΛΙΚΗ ΕΚΠΤΩΣΗ", `-${formatReceiptEuro(receipt.discountInCents)}`);
+  }
+
   printer.drawLine();
   printer.bold(true);
   printer.leftRight("ΣΥΝΟΛΟ", formatReceiptEuro(receipt.totalInCents));
   printer.bold(false);
-  printer.leftRight(receipt.payMethodLabel, formatReceiptEuro(receipt.totalInCents));
+  // An order slip collects nothing, so it carries no label and prints no row.
+  if (receipt.payMethodLabel) {
+    printer.leftRight(receipt.payMethodLabel, formatReceiptEuro(receipt.totalInCents));
+  }
+
+  if (receipt.footnote) {
+    printer.alignCenter();
+    printer.println(receipt.footnote);
+  }
+
+  if (receipt.comments) {
+    printer.drawLine();
+    printer.alignLeft();
+    printer.println("ΠΑΡΑΤΗΡΗΣΕΙΣ");
+    printer.println(receipt.comments);
+  }
 
   if (receipt.transmissionFailure) {
     printer.newLine();

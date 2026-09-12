@@ -76,6 +76,10 @@ export type PrintReceiptLine = {
   quantity: number;
   totalInCents: number;
   rateBps: number;
+  /** The `2x` / `1,5 ΚΙΛ` token as the app formatted it; null prints bare. */
+  quantityLabel: string | null;
+  /** Already deducted from `totalInCents`; printed so the price is explicable. */
+  discountInCents: number;
 };
 
 export type PrintReceiptVatRow = {
@@ -103,10 +107,18 @@ export type PrintReceipt = {
   momentIso: string;
   cashierName: string | null;
   customer: { name: string; vatId: string; street?: string; zip?: string; city?: string } | null;
+  comments: string | null;
   lines: PrintReceiptLine[];
   vatRows: PrintReceiptVatRow[];
+  /** Every line's discount summed; already deducted from `totalInCents`. */
+  discountInCents: number;
   totalInCents: number;
+  /** Empty on an order slip — nothing was collected, so no payment row prints. */
   payMethodLabel: string;
+  /** The table, on an order slip. Prints under the document's number and moment. */
+  area: string | null;
+  /** Prints under the total; an order slip uses it to say the receipt follows. */
+  footnote: string | null;
   transmissionFailure: 1 | 2 | null;
   signatures: PrintReceiptSignature[];
   qrUrl: string | null;
