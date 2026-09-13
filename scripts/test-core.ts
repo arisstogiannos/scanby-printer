@@ -4,7 +4,7 @@ import { buildTicketLines, renderReceipt } from "../src/services/printer-service
 import { PRINT_DEDUPE_MS } from "../src/shared/constants";
 import { initI18n } from "../src/shared/i18n";
 import { normalizePairPayload } from "../src/shared/pair-payload";
-import { normalizePrintOrder } from "../src/shared/print-payload";
+import { normalizeOrderPrintEvent, normalizePrintOrder } from "../src/shared/print-payload";
 import { normalizePrinterConnectPayload } from "../src/shared/printer-connect-payload";
 import { normalizePrintReceipt } from "../src/shared/receipt-payload";
 
@@ -304,6 +304,17 @@ function testConstants(): void {
   assert.equal(PRINT_DEDUPE_MS, 30_000);
 }
 
+function testOrderPrintEventPayload(): void {
+  assert.equal(normalizeOrderPrintEvent("order_created"), "order_created");
+  assert.equal(normalizeOrderPrintEvent("order_reprint"), "order_reprint");
+  assert.equal(normalizeOrderPrintEvent("order_cancelled"), "order_cancelled");
+
+  // An older dashboard sends nothing, and junk must not decide a ticket header.
+  assert.equal(normalizeOrderPrintEvent(undefined), null);
+  assert.equal(normalizeOrderPrintEvent("new_order"), null);
+  assert.equal(normalizeOrderPrintEvent(7), null);
+}
+
 function testPrinterConnectPayload(): void {
   const payload = normalizePrinterConnectPayload({ ip: "192.168.1.50" });
   assert.ok(payload);
@@ -322,6 +333,7 @@ await testBuildTicketLines();
 testDashboardPairPayload();
 testDashboardPrintPayload();
 testPrinterConnectPayload();
+testOrderPrintEventPayload();
 testOrderSlipReceiptPayload();
 await testOrderSlipLayout();
 await testWeighedDiscountedLayout();

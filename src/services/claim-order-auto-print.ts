@@ -10,6 +10,18 @@ type ClaimAutoPrintResponse = {
 
 export type ClaimAutoPrintResult = "claimed" | "lost" | "unavailable" | "retry";
 
+/**
+ * Whether this build can ask the server who owns a new order's ticket. Without
+ * it the app must not auto-print at all: the dashboard claims the order and
+ * sends it over the loopback API, and a second unclaimed copy of the same
+ * ticket would come out of the same printer.
+ */
+export function isAutoPrintClaimConfigured(): boolean {
+  return Boolean(
+    process.env.SCANBY_API_URL && process.env.PRINT_CLAIM_SECRET && getConfig()?.businessId,
+  );
+}
+
 export async function claimOrderAutoPrint(orderId: string): Promise<ClaimAutoPrintResult> {
   const config = getConfig();
   const apiUrl = process.env.SCANBY_API_URL?.replace(/\/$/, "");

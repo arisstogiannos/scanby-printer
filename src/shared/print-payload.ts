@@ -1,4 +1,4 @@
-import type { PrintFontSize, PrintOrder, PrintOrderItem } from "@/shared/types";
+import type { OrderPrintEvent, PrintFontSize, PrintOrder, PrintOrderItem } from "@/shared/types";
 
 function parsePrice(value: unknown): number | undefined {
   const numeric =
@@ -92,4 +92,16 @@ export function normalizePrintOrder(body: unknown): PrintOrder | null {
   }
 
   return null;
+}
+
+const ORDER_PRINT_EVENTS: readonly OrderPrintEvent[] = [
+  "order_created",
+  "order_updated",
+  "order_cancelled",
+  "order_reprint",
+];
+
+/** Reads the event a caller put on the wire; null when absent or unknown. */
+export function normalizeOrderPrintEvent(value: unknown): OrderPrintEvent | null {
+  return ORDER_PRINT_EVENTS.includes(value as OrderPrintEvent) ? (value as OrderPrintEvent) : null;
 }

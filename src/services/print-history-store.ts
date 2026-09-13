@@ -182,6 +182,19 @@ export function recordPrint(params: RecordPrintParams): PrintHistoryEntry {
   return entry;
 }
 
+/** Drops a row that never printed and never failed — a claim another station won. */
+export function removePrintEntry(entryId: string): boolean {
+  const next = entries.filter((entry) => entry.id !== entryId);
+  if (next.length === entries.length) {
+    return false;
+  }
+
+  entries = next;
+  saveToDisk();
+  emitChange();
+  return true;
+}
+
 export function findEntryById(entryId: string): PrintHistoryEntry | null {
   return entries.find((entry) => entry.id === entryId) ?? null;
 }

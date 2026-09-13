@@ -6,6 +6,13 @@ const AUTO_LAUNCH_APP_NAME = "Scanby Print Service";
 
 let autoLauncher: AutoLaunch | null = null;
 
+// MSIX virtualizes the registry, so the Run key written by auto-launch is
+// sandboxed and never fires. Store builds start at login through the
+// windows.startupTask extension in the appx manifest instead.
+function isStoreBuild(): boolean {
+  return Boolean(process.windowsStore);
+}
+
 function getAutoLauncher(): AutoLaunch {
   if (!autoLauncher) {
     autoLauncher = new AutoLaunch({
@@ -18,10 +25,18 @@ function getAutoLauncher(): AutoLaunch {
 }
 
 export function initAutoLaunch(): void {
+  if (isStoreBuild()) {
+    log.info("Auto-launch handled by windows.startupTask — Store build");
+    return;
+  }
   getAutoLauncher();
 }
 
 export async function enableAutoLaunch(): Promise<void> {
+  if (isStoreBuild()) {
+    return;
+  }
+
   if (!app.isPackaged) {
     log.info("Auto-launch skipped — app is not packaged");
     return;
@@ -40,6 +55,10 @@ export async function enableAutoLaunch(): Promise<void> {
 }
 
 export async function disableAutoLaunch(): Promise<void> {
+  if (isStoreBuild()) {
+    return;
+  }
+
   try {
     const enabled = await getAutoLauncher().isEnabled();
     if (enabled) {
@@ -52,6 +71,10 @@ export async function disableAutoLaunch(): Promise<void> {
 }
 
 export async function syncAutoLaunch(configured: boolean): Promise<void> {
+  if (isStoreBuild()) {
+    return;
+  }
+
   if (!app.isPackaged) {
     await disableAutoLaunch();
     return;

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import log from "electron-log";
 import { flashTrayIconRed } from "@/main/tray-effects";
-import { claimOrderAutoPrint } from "@/services/claim-order-auto-print";
+import { claimOrderAutoPrint, isAutoPrintClaimConfigured } from "@/services/claim-order-auto-print";
 import { getConfig } from "@/services/config-store";
 import {
   loadPendingJobs,
@@ -12,6 +12,7 @@ import {
   findLatestEntryByOrderId,
   findLatestOrderById,
   recordPrint,
+  removePrintEntry,
   updatePrintStatus,
 } from "@/services/print-history-store";
 import { printOrder } from "@/services/printer-service";
@@ -71,8 +72,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function requiresAutoPrintClaim(job: QueueJob): boolean {
-  return job.event === "order_created" && job.source === "realtime";
+/**
+ * A new-order ticket this app picked up from Realtime has to win the server-side
+ * claim first — every other station heard the same broadcast. Anything the
+ * dashboard hands us over the loopback API arrives pre-claimed by its caller.
+ */
+function requiresAutoPrintClaim(event: OrderPrintEvent, preClaimed: boolean): boolean {
+  return event === "order_created" && !preClaimed;
 }
 
 function formatFailureReason(errorMessage: string): string {
@@ -154,11 +160,24 @@ class PrintQueue {
 
   enqueue(
     order: PrintOrder,
-    options: { source?: PrintHistorySource; event?: OrderPrintEvent } = {},
+    options: {
+      source?: PrintHistorySource;
+      event?: OrderPrintEvent;
+      /** The caller already holds the server-side auto-print claim for this order. */
+      preClaimed?: boolean;
+    } = {},
   ): boolean {
     const source = options.source ?? "realtime";
     const event = options.event ?? "order_created";
+    const preClaimed = options.preClaimed === true;
     const now = Date.now();
+
+    if (requiresAutoPrintClaim(event, preClaimed) && !isAutoPrintClaimConfigured()) {
+      log.warn(
+        `Auto-print skipped for order ${order.id} — claim endpoint not configured; the dashboard prints this ticket instead`,
+      );
+      return false;
+    }
 
     if (this.shouldDedupe(event)) {
       const lastPrinted = this.recentPrints.get(this.dedupeKey(order.id, event));
@@ -188,7 +207,7 @@ class PrintQueue {
       historyEntryId,
       enqueuedAt: now,
       retryCount: 0,
-      claimAcquired: false,
+      claimAcquired: preClaimed,
     };
 
     this.queue.push(job);
@@ -242,7 +261,7 @@ class PrintQueue {
         break;
       }
 
-      if (requiresAutoPrintClaim(job) && !job.claimAcquired && process.env.PRINT_CLAIM_SECRET) {
+      if (requiresAutoPrintClaim(job.event, job.claimAcquired)) {
         const claimResult = await claimOrderAutoPrint(job.order.id);
 
         if (claimResult === "claimed") {
@@ -272,11 +291,14 @@ class PrintQueue {
         } else {
           const reason =
             claimResult === "unavailable"
-              ? "Auto-print not configured"
-              : "Auto-print claim not acquired";
+              ? "auto-print claim not configured"
+              : "another station holds the claim";
           log.info(`Skipping print for order ${job.order.id} — ${reason}`);
+          // Nothing was printed and nothing went wrong: the dashboard or another
+          // station owns this ticket. A "failed" row here would read as an error
+          // and sit next to the copy that did print.
           if (job.historyEntryId) {
-            updatePrintStatus(job.historyEntryId, "failed", reason);
+            removePrintEntry(job.historyEntryId);
           }
           this.persistQueue();
           continue;

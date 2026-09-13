@@ -84,7 +84,7 @@ Used by Scanby dashboard to pair, poll status, reprint orders, and unpair. App m
 |--------|------|------|-------------|
 | GET | `/status` | None | Printer + pairing status |
 | POST | `/pair` | Origin | Save venue config, start Supabase listener |
-| POST | `/print` | Origin | Queue manual reprint |
+| POST | `/print` | Origin | Queue an order ticket (claimed auto-print or reprint) |
 | POST | `/unpair` | Origin | Clear config, stop listener |
 | POST | `/printer/scan` | Origin | Scan local subnet for ESC/POS printers |
 | POST | `/printer/connect` | Origin | Save selected printer IP and mark setup complete |
@@ -183,9 +183,14 @@ Legacy aliases accepted: `venueId`, `venueName`, `supabaseAnonKey`. If `supabase
     "items": [
       { "quantity": 2, "name": "Greek Salad", "notes": "No onion" }
     ]
-  }
+  },
+  "event": "order_created"
 }
 ```
+
+`event` picks the ticket header: `order_created` (ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ), `order_updated` (ΕΝΗΜΕΡΩΣΗ), `order_reprint` (ΕΠΑΝΕΚΤΥΠΩΣΗ). Omitted, it is `order_updated`.
+
+`order_created` means *the caller already won the auto-print claim for this order* — the app prints it without claiming again, and logs it as an automatic print. Send it only from the dashboard's auto-print path; a reprint button must send `order_reprint`.
 
 Alternate shape (dashboard DB fields): top-level or nested `order` with `table_number`, `order_number`, `created_at`, `items`. Missing `id`/`number`/`createdAt` get defaults.
 
@@ -314,6 +319,20 @@ After pairing, app subscribes to broadcast:
 | Payload | `{ "order": PrintOrder }` |
 
 Same `PrintOrder` shape as `POST /print`.
+
+### Who prints a new order
+
+Every station hears the same `order_created` broadcast — this app, and every
+dashboard tab sitting on the live-orders page. Exactly one of them may print it,
+so each one first claims the order server-side (`POST /api/businesses/:id/orders/:orderId/claim-auto-print`,
+which flips `Order.printCount` 0 → 1); the losers drop the ticket silently and
+leave no history row.
+
+A build without `PRINT_CLAIM_SECRET` cannot claim, so it does **not** auto-print
+from Realtime at all — it only prints what the dashboard hands it over
+`POST /print`. Release builds always carry the secret (CI enforces it); `pnpm dev`
+normally does not, so in development keep the live-orders page open to see
+tickets. Printing unclaimed is what produces two copies of every order.
 
 ## Dashboard integration
 

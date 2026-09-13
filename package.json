@@ -1,6 +1,6 @@
 {
   "name": "scanby-print-service",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "description": "Scanby kitchen ticket print service for network thermal printers",
   "main": "./out/main/index.js",
   "type": "module",
@@ -83,15 +83,18 @@
     },
     "appx": {
       "applicationId": "ScanbyPrintService",
-      "identityName": "Scanby.ScanbyPrintService",
-      "publisher": "CN=unknown",
+      "identityName": "Scanby.ScanbyPrint",
+      "publisher": "CN=5D048038-FED2-4B60-849D-A5B3AF4EF6C8",
       "publisherDisplayName": "Scanby",
-      "displayName": "Scanby Print Service",
+      "displayName": "Scanby Print",
       "languages": [
         "en-US",
         "el-GR"
       ],
       "setBuildNumber": true,
+      "customExtensionsPath": "appx-extensions.xml",
+      "minVersion": "10.0.17763.0",
+      "maxVersionTested": "10.0.19041.0",
       "capabilities": [
         "runFullTrust",
         "internetClient",
