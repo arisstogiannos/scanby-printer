@@ -103,12 +103,13 @@ Used by Scanby dashboard to pair, poll status, reprint orders, and unpair. App m
 | POST | `/unpair` | Origin | Clear config, stop listener |
 | POST | `/printer/scan` | Origin | Scan local subnet for ESC/POS printers |
 | POST | `/printer/connect` | Origin | Save selected printer IP and mark setup complete |
+| POST | `/printer/test` | Origin | Print a sample ticket on one registered printer |
 
 `OPTIONS` preflight supported for CORS.
 
 ### Auth & CORS
 
-Write endpoints (`POST /pair`, `/print`, `/unpair`, `/printer/scan`, `/printer/connect`) require one of:
+Write endpoints (`POST /pair`, `/print`, `/unpair`, `/printer/scan`, `/printer/connect`, `/printer/test`) require one of:
 
 - `Origin` header in whitelist (browser from dashboard)
 - No `Origin` + request to `127.0.0.1` or `localhost` (local scripts)
@@ -286,6 +287,16 @@ Alias accepted: `printerIp`.
 ```
 
 **Errors:** `400` invalid payload, `403` forbidden origin, `409` not paired, `422` printer unreachable, `500` connect failed.
+
+### `POST /printer/test`
+
+Prints the given sample ticket on one registry printer, bypassing role routing and the queue. The printer's own `fontSize` overrides the order's.
+
+**Body:** `{ "printerId": "<registry id>", "order": { ...same shape as POST /print } }`
+
+**Response `200`:** `{ "ok": true }`
+
+**Errors:** `400` invalid payload, `403` forbidden origin, `422` printer not in this app's registry, `502` printer did not take the job. Builds without this endpoint answer `404`; the dashboard then falls back to `POST /print`.
 
 ### Examples
 

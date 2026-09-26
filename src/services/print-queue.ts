@@ -15,7 +15,11 @@ import {
   removePrintEntry,
   updatePrintStatus,
 } from "@/services/print-history-store";
-import { getRoutablePrinters, isKitchenTicketPrintingEnabled } from "@/services/printer-registry";
+import {
+  getRoutablePrinters,
+  isKitchenTicketPrintingEnabled,
+  withPrinterFontSize,
+} from "@/services/printer-registry";
 import { printOrder } from "@/services/printer-service";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { PENDING_JOB_MAX_AGE_MS, PRINT_DEDUPE_MS, PRINT_RETRY_DELAYS_MS } from "@/shared/constants";
@@ -120,7 +124,9 @@ async function printOrderOnEveryKitchenPrinter(
   }
 
   const results = await Promise.allSettled(
-    targets.map((target) => printOrder(target.address, order, event, target.id)),
+    targets.map((target) =>
+      printOrder(target.address, withPrinterFontSize(order, target), event, target.id),
+    ),
   );
 
   const failures = results.filter(

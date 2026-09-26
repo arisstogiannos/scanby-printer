@@ -23,6 +23,11 @@ export type RegisteredPrinter = {
   transport: PrinterTransport;
   address: string;
   enabled: boolean;
+  /**
+   * Kitchen-ticket body size on this printer. Absent from a registry synced
+   * before the setting moved onto printers; the order's own size applies then.
+   */
+  fontSize?: PrintFontSize;
 };
 
 export type AppConfig = {
