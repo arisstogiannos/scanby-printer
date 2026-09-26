@@ -1,7 +1,13 @@
 import log from "electron-log";
 import { appState } from "@/services/app-state";
 import { getConfig, savePrinterRegistry } from "@/services/config-store";
-import type { PrinterRole, PrinterTransport, RegisteredPrinter } from "@/shared/types";
+import type {
+  PrinterRole,
+  PrinterTransport,
+  PrintFontSize,
+  PrintOrder,
+  RegisteredPrinter,
+} from "@/shared/types";
 
 const REGISTRY_TIMEOUT_MS = 8_000;
 
@@ -12,6 +18,13 @@ type RegistryResponse = {
   printers?: unknown;
   kitchenTicketsEnabled?: unknown;
 };
+
+/** The registry speaks the Prisma enum; tickets speak the lowercase wire value. */
+function parseFontSize(value: unknown): PrintFontSize | undefined {
+  if (value === "BIG") return "big";
+  if (value === "DEFAULT") return "default";
+  return undefined;
+}
 
 function parsePrinter(raw: unknown): RegisteredPrinter | null {
   if (raw === null || typeof raw !== "object") {
@@ -35,6 +48,7 @@ function parsePrinter(raw: unknown): RegisteredPrinter | null {
     transport: printer.transport as PrinterTransport,
     address: printer.address,
     enabled: printer.enabled !== false,
+    fontSize: parseFontSize(printer.fontSize),
   };
 }
 
@@ -83,6 +97,11 @@ export function getRoutablePrinters(): RegisteredPrinter[] {
 
 export function isKitchenTicketPrintingEnabled(): boolean {
   return getConfig()?.kitchenTicketsEnabled !== false;
+}
+
+/** The printer's own ticket size wins; a registry without one keeps the order's. */
+export function withPrinterFontSize(order: PrintOrder, printer: RegisteredPrinter): PrintOrder {
+  return printer.fontSize ? { ...order, fontSize: printer.fontSize } : order;
 }
 
 export function findPrinterById(printerId: string): RegisteredPrinter | null {
