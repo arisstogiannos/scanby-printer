@@ -5,15 +5,19 @@ import { startLocalServer, stopLocalServer } from "@/server/index";
 import { appState } from "@/services/app-state";
 import { initAutoLaunch, syncAutoLaunch } from "@/services/auto-launch";
 import { getConfig, initConfigStore, isConfigured, isPaired } from "@/services/config-store";
+import { initDeliveredLedger } from "@/services/delivered-ledger";
 import { shutdownHealthMonitor, startHealthMonitor } from "@/services/health-monitor";
 import { initPendingPrintQueueStore } from "@/services/pending-print-queue-store";
+import { initPendingReceiptQueueStore } from "@/services/pending-receipt-queue-store";
 import { initPrintHistoryStore } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
+import { startPrintSweeps, stopPrintSweeps } from "@/services/print-sweep";
 import { probeSavedPrinterReachable } from "@/services/printer-discovery";
 import {
   shutdownPrinterReconnectMonitor,
   startPrinterReconnectMonitor,
 } from "@/services/printer-reconnect";
+import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import { startStationHeartbeat, stopStationHeartbeat } from "@/services/station-heartbeat";
 import { restartSupabaseListener, shutdownSupabaseListener } from "@/services/supabase-listener";
 import { getLocale, initUserPreferences } from "@/services/user-preferences";
@@ -31,6 +35,8 @@ export async function bootstrapServices(): Promise<void> {
   initConfigStore(userDataPath);
   initPrintHistoryStore(userDataPath);
   initPendingPrintQueueStore(userDataPath);
+  initPendingReceiptQueueStore(userDataPath);
+  initDeliveredLedger(userDataPath);
   initUserPreferences(userDataPath, defaultLocale);
   await initI18n(getLocale());
   initAutoLaunch();
@@ -60,12 +66,17 @@ export async function bootstrapServices(): Promise<void> {
   startPrinterReconnectMonitor();
   startHealthMonitor();
   printQueue.restorePendingJobs();
+  receiptPrintQueue.restorePendingJobs();
+  if (isPaired()) {
+    startPrintSweeps();
+  }
 }
 
 export async function shutdownServices(): Promise<void> {
   shutdownPrinterReconnectMonitor();
   shutdownHealthMonitor();
   stopStationHeartbeat();
+  stopPrintSweeps();
   await printQueue.drain();
   await shutdownSupabaseListener();
   await stopLocalServer();

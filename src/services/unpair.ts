@@ -2,8 +2,10 @@ import log from "electron-log";
 import { appState } from "@/services/app-state";
 import { disableAutoLaunch } from "@/services/auto-launch";
 import { clearConfig, isPaired } from "@/services/config-store";
+import { clearDeliveredLedger } from "@/services/delivered-ledger";
 import { clearPrintHistory } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
+import { stopPrintSweeps } from "@/services/print-sweep";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import { removeStation, stopStationHeartbeat } from "@/services/station-heartbeat";
 import { shutdownSupabaseListener } from "@/services/supabase-listener";
@@ -15,10 +17,12 @@ export async function unpairApp(): Promise<void> {
 
   // Before the config goes: the DELETE needs the business it is leaving.
   stopStationHeartbeat();
+  stopPrintSweeps();
   await removeStation();
   await shutdownSupabaseListener();
   printQueue.clear();
   receiptPrintQueue.clear();
+  clearDeliveredLedger();
   await disableAutoLaunch();
   clearConfig();
   clearPrintHistory();

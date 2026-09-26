@@ -1,7 +1,25 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ThermalPrinter } from "node-thermal-printer";
+import {
+  clearDeliveredLedger,
+  deliveredKeys,
+  forgetDelivered,
+  getReceiptWatermark,
+  hasDelivered,
+  initDeliveredLedger,
+  markDelivered,
+  setReceiptWatermark,
+} from "../src/services/delivered-ledger";
 import { buildTicketLines, renderReceipt } from "../src/services/printer-service";
-import { PRINT_DEDUPE_MS } from "../src/shared/constants";
+import {
+  AUTO_PRINT_MAX_AGE_MS,
+  PRINT_DEDUPE_MS,
+  PRINT_RETRY_DELAYS_MS,
+  REPRINT_MAX_AGE_MS,
+} from "../src/shared/constants";
 import { initI18n } from "../src/shared/i18n";
 import { normalizePairPayload } from "../src/shared/pair-payload";
 import { normalizeOrderPrintEvent, normalizePrintOrder } from "../src/shared/print-payload";
@@ -379,6 +397,44 @@ function testPrinterRouting(): void {
   assert.deepEqual(selectPrintTargets([bar, grill], "fiscal_receipt"), []);
 }
 
+function testDeliveredLedger(): void {
+  const dir = mkdtempSync(join(tmpdir(), "scanby-ledger-"));
+  try {
+    initDeliveredLedger(dir);
+    const ticket = deliveredKeys.orderCreated("order-1");
+    assert.equal(hasDelivered(ticket), false);
+
+    markDelivered(ticket);
+    assert.equal(hasDelivered(ticket), true);
+
+    // Survives a restart: a ticket taken before the app closed prints once.
+    initDeliveredLedger(dir);
+    assert.equal(hasDelivered(ticket), true);
+
+    forgetDelivered(ticket);
+    assert.equal(hasDelivered(ticket), false);
+
+    setReceiptWatermark("2026-09-26T12:00:00.000Z");
+    assert.equal(getReceiptWatermark(60_000), "2026-09-26T12:00:00.000Z");
+    // Too long since it was saved: the app was not running, so start fresh.
+    assert.equal(getReceiptWatermark(-1), null);
+
+    markDelivered(deliveredKeys.relayJob("job-1"));
+    clearDeliveredLedger();
+    assert.equal(hasDelivered(deliveredKeys.relayJob("job-1")), false);
+    assert.equal(getReceiptWatermark(60_000), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function testRetryWindows(): void {
+  // Retried until too old, never after a count: the delays only pace it.
+  assert.equal(PRINT_RETRY_DELAYS_MS.at(-1), 30_000);
+  assert.equal(AUTO_PRINT_MAX_AGE_MS, 60 * 60 * 1000);
+  assert.equal(REPRINT_MAX_AGE_MS, 10 * 60 * 1000);
+}
+
 function testReceiptDocumentClass(): void {
   const slip = normalizePrintReceipt({
     receipt: {
@@ -434,4 +490,6 @@ await testLegacyQuantityFallback();
 testConstants();
 testPrinterRouting();
 testReceiptDocumentClass();
+testDeliveredLedger();
+testRetryWindows();
 console.log("Core tests passed");

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { appState } from "@/services/app-state";
 import { getConfig, isPaired } from "@/services/config-store";
 import { isKitchenTicketPrintingEnabled } from "@/services/printer-registry";
+import { isScanbyApiHealthy } from "@/services/scanby-api";
 import { getStationName, isStationHeartbeatConfigured } from "@/services/station-heartbeat";
 import { getStationId } from "@/services/user-preferences";
 
@@ -29,5 +30,9 @@ export function statusHandler(_req: Request, res: Response): void {
     // True means this station checks in with the server itself, so a dashboard
     // tab on the same PC must stop reporting these printers for it.
     reportsHeartbeat: isStationHeartbeatConfigured(),
+    // True means this station claims new-order tickets and relayed reprints
+    // itself and sweeps for the ones it missed, so a dashboard tab on this PC
+    // leaves them to it instead of racing it for the same claims.
+    sweepsPrintJobs: isScanbyApiHealthy(),
   });
 }

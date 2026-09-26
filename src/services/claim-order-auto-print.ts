@@ -1,14 +1,23 @@
-import log from "electron-log";
-import { getConfig } from "@/services/config-store";
-
-const CLAIM_TIMEOUT_MS = 5_000;
+import { callScanbyApi, isScanbyApiConfigured } from "@/services/scanby-api";
+import { normalizePrintOrder } from "@/shared/print-payload";
+import type { PrintOrder } from "@/shared/types";
 
 type ClaimAutoPrintResponse = {
   claimed?: boolean;
-  error?: string;
+  order?: unknown;
+  /** `held`: another station holds a claim that may still lapse. */
+  reason?: string;
 };
 
-export type ClaimAutoPrintResult = "claimed" | "lost" | "unavailable" | "retry";
+export type ClaimAutoPrintResult =
+  /** Ours to print. `order` is the server's copy, or null from a server too old to send one. */
+  | { kind: "claimed"; order: PrintOrder | null }
+  /** Printed, or taken for good by another station. */
+  | { kind: "lost" }
+  /** A tab or phone holds it for now; the sweep takes it if they let go. */
+  | { kind: "held" }
+  | { kind: "unavailable" }
+  | { kind: "retry" };
 
 /**
  * Whether this build can ask the server who owns a new order's ticket. Without
@@ -17,53 +26,35 @@ export type ClaimAutoPrintResult = "claimed" | "lost" | "unavailable" | "retry";
  * ticket would come out of the same printer.
  */
 export function isAutoPrintClaimConfigured(): boolean {
-  return Boolean(
-    process.env.SCANBY_API_URL && process.env.PRINT_CLAIM_SECRET && getConfig()?.businessId,
-  );
+  return isScanbyApiConfigured();
 }
 
+/**
+ * The claim is this station's alone and never lapses: the job is on disk and
+ * survives a restart, so the ticket prints when the app comes back. Retrying
+ * it is always safe — the server hands a station its own claim back.
+ */
 export async function claimOrderAutoPrint(orderId: string): Promise<ClaimAutoPrintResult> {
-  const config = getConfig();
-  const apiUrl = process.env.SCANBY_API_URL?.replace(/\/$/, "");
-  const secret = process.env.PRINT_CLAIM_SECRET;
+  const result = await callScanbyApi<ClaimAutoPrintResponse>(
+    `/orders/${encodeURIComponent(orderId)}/claim-auto-print`,
+    { method: "POST" },
+  );
 
-  if (!apiUrl || !secret || !config?.businessId) {
-    log.warn(
-      "claim-auto-print skipped: SCANBY_API_URL, PRINT_CLAIM_SECRET, or business pairing not configured — auto-print disabled to avoid duplicate tickets",
-    );
-    return "unavailable";
+  if (result.kind === "retry" || result.kind === "unavailable") {
+    return { kind: result.kind };
   }
-
-  const url = `${apiUrl}/api/businesses/${encodeURIComponent(config.businessId)}/orders/${encodeURIComponent(orderId)}/claim-auto-print`;
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${secret}`,
-      },
-      signal: AbortSignal.timeout(CLAIM_TIMEOUT_MS),
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      log.error(`claim-auto-print auth failed (${response.status}) — check PRINT_CLAIM_SECRET`);
-      return "unavailable";
-    }
-
-    if (response.status >= 500) {
-      log.warn(`claim-auto-print server error (${response.status}) for order ${orderId}`);
-      return "retry";
-    }
-
-    if (!response.ok) {
-      log.warn(`claim-auto-print rejected (${response.status}) for order ${orderId}`);
-      return "lost";
-    }
-
-    const data = (await response.json()) as ClaimAutoPrintResponse;
-    return data.claimed === true ? "claimed" : "lost";
-  } catch (error) {
-    log.warn(`claim-auto-print request failed for order ${orderId}`, error);
-    return "retry";
+  if (result.kind === "rejected") {
+    return { kind: "lost" };
   }
+  if (result.data.claimed === true) {
+    return { kind: "claimed", order: normalizePrintOrder(result.data.order ?? null) };
+  }
+  return result.data.reason === "held" ? { kind: "held" } : { kind: "lost" };
+}
+
+/** Hands a claim back unprinted. Best-effort: the next sweep is the retry. */
+export async function releaseOrderAutoPrint(orderId: string): Promise<void> {
+  await callScanbyApi(`/orders/${encodeURIComponent(orderId)}/release-auto-print`, {
+    method: "POST",
+  });
 }

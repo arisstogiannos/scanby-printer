@@ -105,6 +105,9 @@ async function sendHeartbeat(): Promise<void> {
         kind: "desktop_agent",
         name: getStationName(),
         relaying: isSupabaseSubscribed(),
+        // Reprints are claimed before printing, so the venue's phones need
+        // not stand down while this station is live.
+        claimsRelayJobs: true,
         appVersion: app.getVersion(),
         printers: snapshot.printers,
       }),

@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "@/services/json-file";
 import type { OrderPrintEvent, PrintHistorySource, PrintOrder } from "@/shared/types";
 
 export type PersistedQueueJob = {
@@ -11,6 +11,10 @@ export type PersistedQueueJob = {
   enqueuedAt: number;
   retryCount: number;
   claimAcquired?: boolean;
+  /** The relay job a reprint was stored as, claimed before it prints. */
+  relayJobId?: string;
+  /** The tray already said this job is waiting; say so once, not per retry. */
+  noticeShown?: boolean;
 };
 
 let userDataPath = "";
@@ -53,7 +57,9 @@ function isValidJob(value: unknown): value is PersistedQueueJob {
     (o.historyEntryId === null || typeof o.historyEntryId === "string") &&
     typeof o.enqueuedAt === "number" &&
     typeof o.retryCount === "number" &&
-    (o.claimAcquired === undefined || typeof o.claimAcquired === "boolean")
+    (o.claimAcquired === undefined || typeof o.claimAcquired === "boolean") &&
+    (o.relayJobId === undefined || typeof o.relayJobId === "string") &&
+    (o.noticeShown === undefined || typeof o.noticeShown === "boolean")
   );
 }
 
@@ -62,21 +68,8 @@ export function loadPendingJobs(): PersistedQueueJob[] {
     return [];
   }
 
-  const queuePath = getQueuePath();
-  if (!existsSync(queuePath)) {
-    return [];
-  }
-
-  try {
-    const raw = readFileSync(queuePath, "utf-8");
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(isValidJob);
-  } catch {
-    return [];
-  }
+  const parsed = readJsonFile(getQueuePath());
+  return Array.isArray(parsed) ? parsed.filter(isValidJob) : [];
 }
 
 export function savePendingJobs(jobs: PersistedQueueJob[]): void {
@@ -84,9 +77,5 @@ export function savePendingJobs(jobs: PersistedQueueJob[]): void {
     return;
   }
 
-  if (!existsSync(userDataPath)) {
-    mkdirSync(userDataPath, { recursive: true });
-  }
-
-  writeFileSync(getQueuePath(), JSON.stringify(jobs, null, 2), "utf-8");
+  writeJsonAtomic(getQueuePath(), jobs);
 }

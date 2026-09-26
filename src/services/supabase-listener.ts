@@ -2,6 +2,7 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from "@supaba
 import log from "electron-log";
 import { getConfig } from "@/services/config-store";
 import { printQueue } from "@/services/print-queue";
+import { requestPrintSweep } from "@/services/print-sweep";
 import { syncPrinterRegistry } from "@/services/printer-registry";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import {
@@ -15,11 +16,20 @@ import type { OrderPrintEvent, ReceiptPrintEvent } from "@/shared/types";
 
 type OrderPayload = {
   order?: unknown;
+  /** Set on reprints the server stored as relay jobs: claim it, then print. */
+  relayJobId?: unknown;
 };
 
 type ReceiptPayload = {
   receipt?: unknown;
+  relayJobId?: unknown;
 };
+
+function relayJobIdOf(payload: { relayJobId?: unknown }): string | undefined {
+  return typeof payload.relayJobId === "string" && payload.relayJobId.trim()
+    ? payload.relayJobId.trim()
+    : undefined;
+}
 
 type CancelPayload = {
   orderId?: string;
@@ -110,7 +120,7 @@ function handleOrderEvent(event: OrderPrintEvent, payload: OrderPayload): void {
     return;
   }
 
-  printQueue.enqueue(order, { event });
+  printQueue.enqueue(order, { event, relayJobId: relayJobIdOf(payload) });
 }
 
 function handleOrderCancelled(payload: CancelPayload): void {
@@ -130,7 +140,7 @@ function handleReceiptEvent(event: ReceiptPrintEvent, payload: ReceiptPayload): 
     log.warn(`Received invalid ${event} payload`);
     return;
   }
-  receiptPrintQueue.enqueue(receipt, { event });
+  receiptPrintQueue.enqueue(receipt, { event, relayJobId: relayJobIdOf(payload) });
 }
 
 export async function startSupabaseListener(): Promise<void> {
@@ -207,8 +217,11 @@ export async function startSupabaseListener(): Promise<void> {
         if (status === "SUBSCRIBED") {
           reconnectAttempt = 0;
           log.info(`Supabase channel ${channelName}: subscribed`);
-          // Reconnecting means this station may have missed role changes.
+          // Reconnecting means this station may have missed role changes —
+          // and every broadcast sent while it was down, which are gone for
+          // good. The sweep asks the server for those instead.
           void syncPrinterRegistry();
+          requestPrintSweep();
           return;
         }
 

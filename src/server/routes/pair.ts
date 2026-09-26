@@ -2,8 +2,10 @@ import log from "electron-log";
 import type { Request, Response } from "express";
 import { appState } from "@/services/app-state";
 import { getConfig, savePairing } from "@/services/config-store";
+import { clearDeliveredLedger } from "@/services/delivered-ledger";
 import { retainHistoryForBusiness } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
+import { startPrintSweeps, stopPrintSweeps } from "@/services/print-sweep";
 import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
 import { syncPrinterRegistry } from "@/services/printer-registry";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
@@ -28,6 +30,9 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
       retainHistoryForBusiness(payload.businessId);
       printQueue.clear();
       receiptPrintQueue.clear();
+      clearDeliveredLedger();
+      // Restarted below from the new venue's own starting point.
+      stopPrintSweeps();
       // Moving venues without unlinking first: the old one would otherwise
       // keep this station listed as an offline printer.
       if (previousBusinessId) {
@@ -37,6 +42,7 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
     appState.setPaired(payload.businessName);
     await restartSupabaseListener();
     startStationHeartbeat();
+    startPrintSweeps();
     log.info(`Paired with business ${payload.businessName}`);
 
     if (!hasSeenPairNotification()) {

@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import log from "electron-log";
 import { flashTrayIconRed } from "@/main/tray-effects";
 import { claimOrderAutoPrint, isAutoPrintClaimConfigured } from "@/services/claim-order-auto-print";
+import { claimRelayJob } from "@/services/claim-relay-job";
 import { getConfig } from "@/services/config-store";
+import {
+  deliveredKeys,
+  forgetDelivered,
+  hasDelivered,
+  markDelivered,
+} from "@/services/delivered-ledger";
 import {
   loadPendingJobs,
   type PersistedQueueJob,
@@ -22,7 +29,12 @@ import {
 } from "@/services/printer-registry";
 import { printOrder } from "@/services/printer-service";
 import { showTrayNotification } from "@/services/tray-notifications";
-import { PENDING_JOB_MAX_AGE_MS, PRINT_DEDUPE_MS, PRINT_RETRY_DELAYS_MS } from "@/shared/constants";
+import {
+  AUTO_PRINT_MAX_AGE_MS,
+  PRINT_RETRY_DELAYS_MS,
+  PRINT_RETRY_NOTICE_AFTER,
+  REPRINT_MAX_AGE_MS,
+} from "@/shared/constants";
 import { t } from "@/shared/i18n";
 import { selectPrintTargets } from "@/shared/printer-routing";
 import type { OrderPrintEvent, PrintHistorySource, PrintOrder } from "@/shared/types";
@@ -35,8 +47,26 @@ type QueueJob = {
   historyEntryId: string | null;
   enqueuedAt: number;
   retryCount: number;
+  /**
+   * This station holds the server's claim — or the job needs none — and so
+   * must print it. Persisted: a job restored after a restart must not claim
+   * again, and must not be dropped either.
+   */
   claimAcquired: boolean;
+  /** The relay job a reprint was stored as; claimed before it prints. */
+  relayJobId?: string;
+  noticeShown?: boolean;
 };
+
+export function retryDelayMs(retryCount: number): number {
+  const index = Math.min(Math.max(retryCount, 1), PRINT_RETRY_DELAYS_MS.length) - 1;
+  return PRINT_RETRY_DELAYS_MS[index];
+}
+
+/** How long a job stays worth printing, from when this station took it on. */
+export function maxAgeFor(event: OrderPrintEvent): number {
+  return event === "order_reprint" ? REPRINT_MAX_AGE_MS : AUTO_PRINT_MAX_AGE_MS;
+}
 
 function buildCancelOrder(orderId: string, order?: PrintOrder | null): PrintOrder {
   if (order) {
@@ -64,6 +94,8 @@ function toPersistedJob(job: QueueJob): PersistedQueueJob {
     enqueuedAt: job.enqueuedAt,
     retryCount: job.retryCount,
     ...(job.claimAcquired ? { claimAcquired: true } : {}),
+    ...(job.relayJobId ? { relayJobId: job.relayJobId } : {}),
+    ...(job.noticeShown ? { noticeShown: true } : {}),
   };
 }
 
@@ -74,17 +106,33 @@ function fromPersistedJob(job: PersistedQueueJob): QueueJob {
   };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** What this job is remembered as once it is ours, so it never prints twice here. */
+function deliveredKeyOf(job: Pick<QueueJob, "event" | "order" | "relayJobId">): string | null {
+  if (job.relayJobId) {
+    return deliveredKeys.relayJob(job.relayJobId);
+  }
+  if (job.event === "order_created") {
+    return deliveredKeys.orderCreated(job.order.id);
+  }
+  return null;
 }
+
+type ClaimNeeded = "auto_print" | "relay" | null;
 
 /**
  * A new-order ticket this app picked up from Realtime has to win the server-side
- * claim first — every other station heard the same broadcast. Anything the
- * dashboard hands us over the loopback API arrives pre-claimed by its caller.
+ * claim first — every other station heard the same broadcast. So does a
+ * relayed reprint. Anything the dashboard hands us over the loopback API
+ * arrives pre-claimed by its caller.
  */
-function requiresAutoPrintClaim(event: OrderPrintEvent, preClaimed: boolean): boolean {
-  return event === "order_created" && !preClaimed;
+function claimNeeded(job: QueueJob): ClaimNeeded {
+  if (job.claimAcquired) {
+    return null;
+  }
+  if (job.relayJobId) {
+    return "relay";
+  }
+  return job.event === "order_created" ? "auto_print" : null;
 }
 
 function formatFailureReason(errorMessage: string): string {
@@ -145,28 +193,55 @@ async function printOrderOnEveryKitchenPrinter(
     : new Error("Kitchen ticket failed on every printer");
 }
 
+/**
+ * Tickets waiting for this station's printers, on disk so a restart loses
+ * none of them. A job is retried — the claim if the server was unreachable,
+ * the print if the printer was — until it prints or is too old to be worth
+ * printing; it is never dropped after a fixed number of attempts.
+ */
 class PrintQueue {
   private queue: QueueJob[] = [];
   private retryPending = new Map<string, QueueJob>();
   private retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private processing = false;
-  private recentPrints = new Map<string, number>();
   private restored = false;
-
-  private dedupeKey(orderId: string, event: OrderPrintEvent): string {
-    return `${orderId}:${event}`;
-  }
-
-  private shouldDedupe(event: OrderPrintEvent): boolean {
-    return event === "order_created";
-  }
+  /**
+   * The job being claimed or printed right now. Out of the queue but not done:
+   * it is persisted, so a crash mid-print loses nothing, and counted as
+   * pending, so a sweep landing meanwhile does not queue a second copy.
+   */
+  private current: QueueJob | null = null;
 
   private persistQueue(): void {
     const pending = [
+      ...(this.current ? [toPersistedJob(this.current)] : []),
       ...this.queue.map(toPersistedJob),
       ...[...this.retryPending.values()].map(toPersistedJob),
     ];
     savePendingJobs(pending);
+  }
+
+  private findPending(predicate: (job: QueueJob) => boolean): QueueJob | undefined {
+    if (this.current && predicate(this.current)) {
+      return this.current;
+    }
+    return this.queue.find(predicate) ?? [...this.retryPending.values()].find(predicate);
+  }
+
+  /** Whether this station already has this order's new-order ticket, queued or printed. */
+  hasOrderTicket(orderId: string): boolean {
+    return (
+      hasDelivered(deliveredKeys.orderCreated(orderId)) ||
+      this.findPending((job) => job.event === "order_created" && job.order.id === orderId) !==
+        undefined
+    );
+  }
+
+  hasRelayJob(jobId: string): boolean {
+    return (
+      hasDelivered(deliveredKeys.relayJob(jobId)) ||
+      this.findPending((job) => job.relayJobId === jobId) !== undefined
+    );
   }
 
   clear(): void {
@@ -176,6 +251,7 @@ class PrintQueue {
     this.retryTimers.clear();
     this.queue = [];
     this.retryPending.clear();
+    this.current = null;
     this.processing = false;
     this.restored = false;
     savePendingJobs([]);
@@ -192,9 +268,9 @@ class PrintQueue {
     const restoredJobs: QueueJob[] = [];
 
     for (const job of pending) {
-      if (now - job.enqueuedAt > PENDING_JOB_MAX_AGE_MS) {
+      if (now - job.enqueuedAt > maxAgeFor(job.event)) {
         if (job.historyEntryId) {
-          updatePrintStatus(job.historyEntryId, "failed", "Print job expired after 24h");
+          updatePrintStatus(job.historyEntryId, "failed", "Print job expired");
         }
         continue;
       }
@@ -215,13 +291,16 @@ class PrintQueue {
     options: {
       source?: PrintHistorySource;
       event?: OrderPrintEvent;
-      /** The caller already holds the server-side auto-print claim for this order. */
+      /** The caller already holds the server-side claim for this job. */
       preClaimed?: boolean;
+      /** The relay job this reprint is stored as; claimed before printing unless pre-claimed. */
+      relayJobId?: string;
     } = {},
   ): boolean {
     const source = options.source ?? "realtime";
     const event = options.event ?? "order_created";
     const preClaimed = options.preClaimed === true;
+    const relayJobId = options.relayJobId;
     const now = Date.now();
 
     // A venue that prints no kitchen tickets should not claim the order
@@ -231,19 +310,39 @@ class PrintQueue {
       return false;
     }
 
-    if (requiresAutoPrintClaim(event, preClaimed) && !isAutoPrintClaimConfigured()) {
+    if (event === "order_created" && !preClaimed && !isAutoPrintClaimConfigured()) {
       log.warn(
         `Auto-print skipped for order ${order.id} — claim endpoint not configured; the dashboard prints this ticket instead`,
       );
       return false;
     }
 
-    if (this.shouldDedupe(event)) {
-      const lastPrinted = this.recentPrints.get(this.dedupeKey(order.id, event));
-      if (lastPrinted !== undefined && now - lastPrinted < PRINT_DEDUPE_MS) {
-        log.info(`Skipping duplicate print for order ${order.id} (${event})`);
+    if (event === "order_created") {
+      if (hasDelivered(deliveredKeys.orderCreated(order.id))) {
+        log.info(`Skipping order ${order.id} — this station already took its new-order ticket`);
         return false;
       }
+      const existing = this.findPending(
+        (job) => job.event === "order_created" && job.order.id === order.id,
+      );
+      if (existing) {
+        // The dashboard on this PC won the claim this job was about to ask
+        // for: take the ticket as claimed instead of queueing a second copy.
+        if (preClaimed && !existing.claimAcquired) {
+          existing.claimAcquired = true;
+          markDelivered(deliveredKeys.orderCreated(order.id));
+          this.persistQueue();
+          log.info(`Order ${order.id} handed over pre-claimed — using the queued job`);
+          return true;
+        }
+        log.info(`Skipping duplicate new-order ticket for order ${order.id}`);
+        return false;
+      }
+    }
+
+    if (relayJobId && this.hasRelayJob(relayJobId)) {
+      log.info(`Skipping relay job ${relayJobId} — already taken by this station`);
+      return false;
     }
 
     const historyEntryId =
@@ -267,7 +366,13 @@ class PrintQueue {
       enqueuedAt: now,
       retryCount: 0,
       claimAcquired: preClaimed,
+      ...(relayJobId ? { relayJobId } : {}),
     };
+
+    if (preClaimed) {
+      const key = deliveredKeyOf(job);
+      if (key) markDelivered(key);
+    }
 
     this.queue.push(job);
     this.persistQueue();
@@ -281,13 +386,26 @@ class PrintQueue {
     return this.enqueue(order, { event: "order_cancelled" });
   }
 
+  /**
+   * Waits for the job being printed right now. Retries waiting on a timer are
+   * not waited for — they are on disk and resume when the app starts again,
+   * and a printer that stays down must not hold up quitting.
+   */
   async drain(): Promise<void> {
-    while (this.processing || this.queue.length > 0 || this.retryPending.size > 0) {
-      await sleep(100);
+    while (this.processing) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  /** The job is no longer in flight — done, dropped or waiting on a timer. Call before persisting. */
+  private settle(job: QueueJob): void {
+    if (this.current === job) {
+      this.current = null;
     }
   }
 
   private scheduleRetry(job: QueueJob, delayMs: number): void {
+    this.settle(job);
     this.retryPending.set(job.id, job);
     this.persistQueue();
     const timer = setTimeout(() => {
@@ -300,6 +418,113 @@ class PrintQueue {
     this.retryTimers.set(job.id, timer);
   }
 
+  private isExpired(job: QueueJob, extraMs = 0): boolean {
+    return Date.now() + extraMs - job.enqueuedAt > maxAgeFor(job.event);
+  }
+
+  /** The one place a job is given up on: it has grown too old to be worth printing. */
+  private giveUp(job: QueueJob, message: string): void {
+    this.settle(job);
+    log.error(
+      `Giving up on order ${job.order.id} (${job.event}) after ${job.retryCount} retries: ${message}`,
+    );
+    this.persistQueue();
+    if (job.historyEntryId) {
+      updatePrintStatus(job.historyEntryId, "failed", message);
+    } else {
+      recordPrint({
+        orderId: job.order.id,
+        orderNumber: job.order.number,
+        table: job.order.table,
+        source: job.source,
+        status: "failed",
+        payload: job.order,
+        error: message,
+      });
+    }
+    showTrayNotification(
+      t("notifications.orderFailed", { number: job.order.number }),
+      formatFailureReason(message),
+    );
+    flashTrayIconRed();
+  }
+
+  private retryOrGiveUp(job: QueueJob, message: string): void {
+    job.retryCount += 1;
+    const delay = retryDelayMs(job.retryCount);
+    if (this.isExpired(job, delay)) {
+      this.giveUp(job, message);
+      return;
+    }
+    log.warn(
+      `Order ${job.order.id} (${job.event}) not printed yet (${message}) — retry ${job.retryCount} in ${delay}ms`,
+    );
+    this.scheduleRetry(job, delay);
+  }
+
+  /** Nothing went wrong: another station owns this job. A "failed" row would read as an error. */
+  private drop(job: QueueJob, reason: string): void {
+    this.settle(job);
+    log.info(`Skipping print for order ${job.order.id} — ${reason}`);
+    if (job.historyEntryId) {
+      removePrintEntry(job.historyEntryId);
+    }
+    this.persistQueue();
+  }
+
+  /** Resolves true when the job is now this station's to print. */
+  private async acquireClaim(job: QueueJob, needed: Exclude<ClaimNeeded, null>): Promise<boolean> {
+    if (needed === "auto_print") {
+      const result = await claimOrderAutoPrint(job.order.id);
+      // The dashboard on this PC handed the ticket over while the request was
+      // out — refused because the dashboard holds it. It is ours now.
+      if (job.claimAcquired && result.kind !== "claimed") {
+        return true;
+      }
+      switch (result.kind) {
+        case "claimed":
+          if (result.order) job.order = result.order;
+          return true;
+        case "retry":
+          this.retryOrGiveUp(job, "Auto-print claim failed");
+          return false;
+        case "held":
+          // A tab or phone is printing it. If it lets go, the sweep brings it back.
+          this.drop(job, "another station is printing it");
+          return false;
+        case "lost":
+          this.drop(job, "another station holds the claim");
+          return false;
+        case "unavailable":
+          this.drop(job, "auto-print claim not configured");
+          return false;
+      }
+    }
+
+    const relayJobId = job.relayJobId ?? "";
+    const result = await claimRelayJob(relayJobId);
+    switch (result.kind) {
+      case "claimed":
+        if (result.order) job.order = result.order;
+        return true;
+      case "unclaimable":
+        // Printing what it hears is what this build did before relay claims;
+        // it reports so in its check-in, and the phones stand down for it.
+        log.warn(`Relay job ${relayJobId} cannot be claimed — printing it as before`);
+        // Now an ordinary reprint, as builds before relay claims made it.
+        job.relayJobId = undefined;
+        return true;
+      case "retry":
+        this.retryOrGiveUp(job, "Reprint claim failed");
+        return false;
+      case "held":
+      case "lost":
+        forgetDelivered(deliveredKeys.relayJob(relayJobId));
+        this.drop(job, "another station took the reprint");
+        return false;
+    }
+  }
+
   private async processQueue(): Promise<void> {
     if (this.processing) {
       return;
@@ -307,6 +532,7 @@ class PrintQueue {
     this.processing = true;
 
     while (this.queue.length > 0) {
+      this.current = null;
       const job = this.queue.shift();
       if (!job) {
         break;
@@ -319,54 +545,27 @@ class PrintQueue {
         this.persistQueue();
         break;
       }
+      this.current = job;
 
-      if (requiresAutoPrintClaim(job.event, job.claimAcquired)) {
-        const claimResult = await claimOrderAutoPrint(job.order.id);
+      if (this.isExpired(job)) {
+        this.giveUp(job, "Print job expired");
+        continue;
+      }
 
-        if (claimResult === "claimed") {
-          job.claimAcquired = true;
-          this.persistQueue();
-        } else if (claimResult === "retry") {
-          job.retryCount += 1;
-          if (job.retryCount <= PRINT_RETRY_DELAYS_MS.length) {
-            const delay =
-              PRINT_RETRY_DELAYS_MS[job.retryCount - 1] ??
-              PRINT_RETRY_DELAYS_MS[PRINT_RETRY_DELAYS_MS.length - 1];
-            log.warn(
-              `Auto-print claim failed for order ${job.order.id}, retry ${job.retryCount}/${PRINT_RETRY_DELAYS_MS.length} in ${delay}ms`,
-            );
-            this.scheduleRetry(job, delay);
-            continue;
-          }
-
-          log.error(
-            `Auto-print claim failed for order ${job.order.id} after ${PRINT_RETRY_DELAYS_MS.length + 1} attempts`,
-          );
-          if (job.historyEntryId) {
-            updatePrintStatus(job.historyEntryId, "failed", "Auto-print claim failed");
-          }
-          this.persistQueue();
-          continue;
-        } else {
-          const reason =
-            claimResult === "unavailable"
-              ? "auto-print claim not configured"
-              : "another station holds the claim";
-          log.info(`Skipping print for order ${job.order.id} — ${reason}`);
-          // Nothing was printed and nothing went wrong: the dashboard or another
-          // station owns this ticket. A "failed" row here would read as an error
-          // and sit next to the copy that did print.
-          if (job.historyEntryId) {
-            removePrintEntry(job.historyEntryId);
-          }
-          this.persistQueue();
+      const needed = claimNeeded(job);
+      if (needed) {
+        if (!(await this.acquireClaim(job, needed))) {
           continue;
         }
+        job.claimAcquired = true;
+        const key = deliveredKeyOf(job);
+        if (key) markDelivered(key);
+        this.persistQueue();
       }
 
       try {
         await printOrderOnEveryKitchenPrinter(job.order, job.event, config.printerIp);
-        this.recentPrints.set(this.dedupeKey(job.order.id, job.event), Date.now());
+        this.settle(job);
         this.persistQueue();
         if (job.historyEntryId) {
           updatePrintStatus(job.historyEntryId, "printed");
@@ -380,63 +579,28 @@ class PrintQueue {
             payload: job.order,
           });
         }
+        if (job.noticeShown) {
+          showTrayNotification(
+            t("notifications.orderPrintedAfterRetry", { number: job.order.number }),
+          );
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Print failed";
-        job.retryCount += 1;
-
-        if (job.retryCount <= PRINT_RETRY_DELAYS_MS.length) {
-          const delay =
-            PRINT_RETRY_DELAYS_MS[job.retryCount - 1] ??
-            PRINT_RETRY_DELAYS_MS[PRINT_RETRY_DELAYS_MS.length - 1];
-          log.warn(
-            `Print failed for order ${job.order.id} (${job.event}), retry ${job.retryCount}/${PRINT_RETRY_DELAYS_MS.length} in ${delay}ms`,
-            error,
+        if (!job.noticeShown && job.retryCount + 1 >= PRINT_RETRY_NOTICE_AFTER) {
+          job.noticeShown = true;
+          showTrayNotification(
+            t("notifications.orderWaiting", { number: job.order.number }),
+            formatFailureReason(message),
           );
-          this.scheduleRetry(job, delay);
-          continue;
+          flashTrayIconRed();
         }
-
-        log.error(
-          `Failed to print order ${job.order.id} (${job.event}) after ${PRINT_RETRY_DELAYS_MS.length + 1} attempts`,
-          error,
-        );
-        this.persistQueue();
-        if (job.historyEntryId) {
-          updatePrintStatus(job.historyEntryId, "failed", message);
-        } else {
-          recordPrint({
-            orderId: job.order.id,
-            orderNumber: job.order.number,
-            table: job.order.table,
-            source: job.source,
-            status: "failed",
-            payload: job.order,
-            error: message,
-          });
-        }
-
-        const failureReason = formatFailureReason(message);
-
-        showTrayNotification(
-          t("notifications.orderFailed", { number: job.order.number }),
-          failureReason,
-        );
-        flashTrayIconRed();
+        this.retryOrGiveUp(job, message);
       }
     }
 
+    this.current = null;
     this.persistQueue();
     this.processing = false;
-    this.pruneRecentPrints();
-  }
-
-  private pruneRecentPrints(): void {
-    const now = Date.now();
-    for (const [key, printedAt] of this.recentPrints) {
-      if (now - printedAt > PRINT_DEDUPE_MS) {
-        this.recentPrints.delete(key);
-      }
-    }
   }
 }
 

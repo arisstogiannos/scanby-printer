@@ -160,6 +160,7 @@ No request body.
 | `stationId` | `string` | This install's stable UUID; survives restarts, unpair and re-pair |
 | `stationName` | `string` | The PC's hostname |
 | `reportsHeartbeat` | `boolean` | This station checks in with the server itself (see below), so the dashboard must not report its printers for it |
+| `sweepsPrintJobs` | `boolean` | This station claims new-order tickets and relayed reprints itself and sweeps for missed ones (see *Delivery*), so a dashboard tab on this PC leaves them to it. True only while its authenticated API calls are succeeding (within the last 2 minutes) |
 
 ### `POST /pair`
 
@@ -221,7 +222,9 @@ Each item requires `quantity` (number) and `name` (string). `notes` optional.
 { "ok": true, "queued": true }
 ```
 
-`queued: false` when duplicate within 30s dedupe window.
+`queued: false` when this station already has the job — a new-order ticket it
+queued or printed before (it prints once per order, ever), or a duplicate within
+the 30s window. The caller should treat it as delivered.
 
 **Errors:** `400` invalid order, `403` forbidden origin.
 
@@ -362,6 +365,33 @@ from Realtime at all — it only prints what the dashboard hands it over
 `POST /print`. Release builds always carry the secret (CI enforces it); `pnpm dev`
 normally does not, so in development keep the live-orders page open to see
 tickets. Printing unclaimed is what produces two copies of every order.
+
+### Delivery on a bad connection
+
+Broadcasts are sent once and never replayed, so they only wake the station up;
+the server's rows are the jobs. This app:
+
+- **Claims idempotently.** Every claim body carries `stationId`, and the server
+  hands a station its own claim back — a retry after a response the network ate
+  no longer loses the ticket. This app's claims never lapse: its queue is on disk.
+- **Sweeps.** On every Realtime (re)subscribe and every 30 s it asks for
+  `GET …/orders/pending-print` (tickets nobody printed, or whose tab or phone
+  claimed them and vanished), `GET …/print-relay-jobs/pending` (reprints nobody
+  took) and `GET …/receipts/print-feed?since=` (receipts signed since the last
+  look, read against the server's clock). Sweeps are skipped until a printer is
+  set up, and against a server too old to answer them.
+- **Claims relayed reprints.** An `order_reprint` / `receipt_reprint` broadcast
+  carrying `relayJobId` is claimed (`POST …/print-relay-jobs/:id/claim`) before
+  it prints; without one it prints as before. The check-in reports
+  `claimsRelayJobs: true`, so the venue's phones need not stand down for it.
+- **Retries until it prints or is too old.** Order and receipt jobs retry the
+  claim or the printer every 5–30 s for up to an hour (reprints: 10 minutes),
+  survive restarts (`pending-print-queue.json`, `pending-receipt-queue.json`),
+  and the tray says once when one is waiting and again when it prints.
+- **Takes only what it can print.** A relayed reprint is claimed only if a printer here may print its document; one that turns unroutable after the claim is handed back, not held.
+- **Writes atomically.** Queue and ledger files are written to a temp file and renamed, so a power cut never truncates them; an unreadable file is kept aside as `*.corrupt-<time>`.
+- **Prints each job once.** `delivered-prints.json` remembers, for two hours,
+  every new-order ticket, relay job and receipt this station took on.
 
 ### Station check-in
 
