@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import { appState } from "@/services/app-state";
 import { getConfig, isPaired } from "@/services/config-store";
 import { isKitchenTicketPrintingEnabled } from "@/services/printer-registry";
+import { getStationName, isStationHeartbeatConfigured } from "@/services/station-heartbeat";
+import { getStationId } from "@/services/user-preferences";
 
 export function statusHandler(_req: Request, res: Response): void {
   const snapshot = appState.getSnapshot();
@@ -22,5 +24,10 @@ export function statusHandler(_req: Request, res: Response): void {
     printers: snapshot.printers,
     kitchenTicketsEnabled: isKitchenTicketPrintingEnabled(),
     unroutableFiscalCount: snapshot.unroutableFiscalCount,
+    stationId: getStationId(),
+    stationName: getStationName(),
+    // True means this station checks in with the server itself, so a dashboard
+    // tab on the same PC must stop reporting these printers for it.
+    reportsHeartbeat: isStationHeartbeatConfigured(),
   });
 }

@@ -27,12 +27,33 @@ type CancelPayload = {
 
 let channelStatus: string = "CLOSED";
 
+const subscriptionListeners = new Set<() => void>();
+
 export function getSupabaseChannelStatus(): string {
   return channelStatus;
 }
 
 export function isSupabaseSubscribed(): boolean {
   return channelStatus === "SUBSCRIBED";
+}
+
+/** Fires only when `isSupabaseSubscribed()` flips, not on every channel status. */
+export function onSupabaseSubscriptionChange(listener: () => void): () => void {
+  subscriptionListeners.add(listener);
+  return () => {
+    subscriptionListeners.delete(listener);
+  };
+}
+
+function setChannelStatus(status: string): void {
+  const wasSubscribed = isSupabaseSubscribed();
+  channelStatus = status;
+  if (wasSubscribed === isSupabaseSubscribed()) {
+    return;
+  }
+  for (const listener of subscriptionListeners) {
+    listener();
+  }
 }
 
 let supabaseClient: SupabaseClient | null = null;
@@ -181,7 +202,7 @@ export async function startSupabaseListener(): Promise<void> {
           return;
         }
 
-        channelStatus = status;
+        setChannelStatus(status);
 
         if (status === "SUBSCRIBED") {
           reconnectAttempt = 0;
@@ -213,7 +234,7 @@ export async function stopSupabaseListener(): Promise<void> {
   clearReconnectTimer();
   await teardownChannel();
   supabaseClient = null;
-  channelStatus = "CLOSED";
+  setChannelStatus("CLOSED");
 }
 
 export async function restartSupabaseListener(): Promise<void> {

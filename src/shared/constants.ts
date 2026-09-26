@@ -39,6 +39,12 @@ export const APP_STATE_FALLBACK_POLL_MS = 30_000;
  * when the venue changed a role.
  */
 export const PRINTER_REGISTRY_POLL_MS = 10 * 60 * 1000;
+/**
+ * The server calls a station offline after 2 minutes of silence, so this leaves
+ * room for one lost check-in before the venue sees it drop.
+ */
+export const STATION_HEARTBEAT_INTERVAL_MS = 45_000;
+export const STATION_HEARTBEAT_DEBOUNCE_MS = 2_000;
 export const TRAY_PULSE_DURATION_MS = 3_000;
 export const TRAY_FAILURE_FLASH_MS = 2_000;
 export const DOWNLOAD_PAGE_URL = "https://github.com/arisstogiannos/scanby-printer/releases";

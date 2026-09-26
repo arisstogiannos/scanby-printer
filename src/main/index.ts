@@ -14,6 +14,7 @@ import {
 import { initTray } from "@/main/tray";
 import { showSetupWindow, showWindowForStartup } from "@/main/window-manager";
 import { appState } from "@/services/app-state";
+import { removeStation } from "@/services/station-heartbeat";
 
 const gotLock = app.requestSingleInstanceLock();
 
@@ -74,8 +75,19 @@ if (!gotLock) {
     // Keep running in tray on all platforms
   });
 
-  app.on("before-quit", () => {
+  let quitHeld = false;
+  app.on("before-quit", (event) => {
+    if (quitHeld) {
+      return;
+    }
+    // Hold the quit once, only as long as the station's DELETE takes (it times
+    // out at 2s), so the venue sees this PC leave instead of go offline.
+    quitHeld = true;
+    event.preventDefault();
     void shutdownServices();
+    void removeStation().finally(() => {
+      app.quit();
+    });
   });
 
   app.on("activate", () => {

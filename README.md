@@ -156,6 +156,9 @@ No request body.
 | `printer` | `"online" \| "offline" \| "printing" \| "scanning"` | Printer state |
 | `businessName` | `string \| null` | Same as `venueName` |
 | `paired` | `boolean` | Config saved and listener active |
+| `stationId` | `string` | This install's stable UUID; survives restarts, unpair and re-pair |
+| `stationName` | `string` | The PC's hostname |
+| `reportsHeartbeat` | `boolean` | This station checks in with the server itself (see below), so the dashboard must not report its printers for it |
 
 ### `POST /pair`
 
@@ -348,6 +351,16 @@ from Realtime at all — it only prints what the dashboard hands it over
 `POST /print`. Release builds always carry the secret (CI enforces it); `pnpm dev`
 normally does not, so in development keep the live-orders page open to see
 tickets. Printing unclaimed is what produces two copies of every order.
+
+### Station check-in
+
+While paired, and when the build carries `SCANBY_API_URL` and `PRINT_CLAIM_SECRET`,
+the app reports itself to `POST /api/businesses/:id/print-stations` every 45 s —
+and within ~2 s of a printer status or Realtime subscription change — with its
+`stationId`, hostname, whether it is subscribed (`relaying`), app version and the
+same `printers` list `GET /status` returns. The server stamps `lastSeenAt` and
+treats a station silent for 2 minutes as offline. Unpair and a normal quit send a
+best-effort `DELETE` to the same URL with `{ "stationId": "..." }`.
 
 ## Dashboard integration
 

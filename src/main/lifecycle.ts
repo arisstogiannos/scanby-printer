@@ -14,6 +14,7 @@ import {
   shutdownPrinterReconnectMonitor,
   startPrinterReconnectMonitor,
 } from "@/services/printer-reconnect";
+import { startStationHeartbeat, stopStationHeartbeat } from "@/services/station-heartbeat";
 import { restartSupabaseListener, shutdownSupabaseListener } from "@/services/supabase-listener";
 import { getLocale, initUserPreferences } from "@/services/user-preferences";
 import { initI18n } from "@/shared/i18n";
@@ -53,6 +54,7 @@ export async function bootstrapServices(): Promise<void> {
     }
     log.info("starting supabase listener");
     await restartSupabaseListener();
+    startStationHeartbeat();
   }
 
   startPrinterReconnectMonitor();
@@ -63,6 +65,7 @@ export async function bootstrapServices(): Promise<void> {
 export async function shutdownServices(): Promise<void> {
   shutdownPrinterReconnectMonitor();
   shutdownHealthMonitor();
+  stopStationHeartbeat();
   await printQueue.drain();
   await shutdownSupabaseListener();
   await stopLocalServer();

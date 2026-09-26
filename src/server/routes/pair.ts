@@ -7,6 +7,7 @@ import { printQueue } from "@/services/print-queue";
 import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
 import { syncPrinterRegistry } from "@/services/printer-registry";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
+import { removeStation, startStationHeartbeat } from "@/services/station-heartbeat";
 import { restartSupabaseListener } from "@/services/supabase-listener";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { hasSeenPairNotification, markPairNotificationSeen } from "@/services/user-preferences";
@@ -27,9 +28,15 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
       retainHistoryForBusiness(payload.businessId);
       printQueue.clear();
       receiptPrintQueue.clear();
+      // Moving venues without unlinking first: the old one would otherwise
+      // keep this station listed as an offline printer.
+      if (previousBusinessId) {
+        void removeStation(previousBusinessId);
+      }
     }
     appState.setPaired(payload.businessName);
     await restartSupabaseListener();
+    startStationHeartbeat();
     log.info(`Paired with business ${payload.businessName}`);
 
     if (!hasSeenPairNotification()) {

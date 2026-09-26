@@ -1,9 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locale } from "@/shared/i18n";
 
 type UserPreferences = {
   locale?: Locale;
+  /**
+   * Who this install is to the server's station list. Lives here rather than in
+   * the pairing config because unpair deletes that file, and a station that
+   * re-pairs must keep its identity instead of leaving a ghost behind.
+   */
+  stationId?: string;
   hasSeenTrayDiscovery: boolean;
   hasSeenPairNotification: boolean;
 };
@@ -36,8 +43,11 @@ function loadPreferences(): UserPreferences {
     }
     const o = parsed as Record<string, unknown>;
     const locale = o.locale === "el" || o.locale === "en" ? o.locale : undefined;
+    const stationId =
+      typeof o.stationId === "string" && o.stationId.length > 0 ? o.stationId : undefined;
     return {
       locale,
+      stationId,
       hasSeenTrayDiscovery: o.hasSeenTrayDiscovery === true,
       hasSeenPairNotification: o.hasSeenPairNotification === true,
     };
@@ -62,10 +72,19 @@ export function initUserPreferences(dataPath: string, defaultLocale: Locale = "e
   userDataPath = dataPath;
   preferences = loadPreferences();
 
-  if (!preferences.locale) {
-    preferences.locale = defaultLocale;
+  if (!preferences.locale || !preferences.stationId) {
+    preferences.locale ??= defaultLocale;
+    preferences.stationId ??= randomUUID();
     savePreferences();
   }
+}
+
+export function getStationId(): string {
+  if (!preferences.stationId) {
+    preferences.stationId = randomUUID();
+    savePreferences();
+  }
+  return preferences.stationId;
 }
 
 export function getLocale(): Locale {
