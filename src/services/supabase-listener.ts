@@ -2,6 +2,7 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from "@supaba
 import log from "electron-log";
 import { getConfig } from "@/services/config-store";
 import { printQueue } from "@/services/print-queue";
+import { syncPrinterRegistry } from "@/services/printer-registry";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import {
   CHANNEL_PREFIX,
@@ -164,6 +165,17 @@ export async function startSupabaseListener(): Promise<void> {
       .on("broadcast", { event: "receipt_reprint" }, ({ payload }) => {
         handleReceiptEvent("receipt_reprint", payload as ReceiptPayload);
       })
+      // Carries no printer data: the registry is pulled over this app's own
+      // authenticated call, so a spoofed broadcast can cost a fetch and
+      // nothing more — it can never add a printer or change a role.
+      .on("broadcast", { event: "printers_updated" }, () => {
+        log.info("printers_updated — refreshing the printer registry");
+        void syncPrinterRegistry().then(() => {
+          // A role that was just assigned may be exactly what a held receipt
+          // was waiting for.
+          receiptPrintQueue.retryHeldJobs();
+        });
+      })
       .subscribe((status) => {
         if (tearingDown) {
           return;
@@ -174,6 +186,8 @@ export async function startSupabaseListener(): Promise<void> {
         if (status === "SUBSCRIBED") {
           reconnectAttempt = 0;
           log.info(`Supabase channel ${channelName}: subscribed`);
+          // Reconnecting means this station may have missed role changes.
+          void syncPrinterRegistry();
           return;
         }
 

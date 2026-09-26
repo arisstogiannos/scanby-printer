@@ -15,10 +15,12 @@ import {
   removePrintEntry,
   updatePrintStatus,
 } from "@/services/print-history-store";
+import { getRoutablePrinters, isKitchenTicketPrintingEnabled } from "@/services/printer-registry";
 import { printOrder } from "@/services/printer-service";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { PENDING_JOB_MAX_AGE_MS, PRINT_DEDUPE_MS, PRINT_RETRY_DELAYS_MS } from "@/shared/constants";
 import { t } from "@/shared/i18n";
+import { selectPrintTargets } from "@/shared/printer-routing";
 import type { OrderPrintEvent, PrintHistorySource, PrintOrder } from "@/shared/types";
 
 type QueueJob = {
@@ -91,6 +93,50 @@ function formatFailureReason(errorMessage: string): string {
     return "printer offline";
   }
   return errorMessage;
+}
+
+/**
+ * Prints one ticket on every kitchen printer the venue has.
+ *
+ * Fan-out, not first-match: a bar printer and a grill printer both set to
+ * `KITCHEN` each want the whole ticket. The job only fails — and so only
+ * retries — if *no* printer took it; a venue with two printers and one jammed
+ * roll still gets its order to the kitchen, and the failure is logged rather
+ * than replayed onto the printer that already produced the ticket.
+ */
+async function printOrderOnEveryKitchenPrinter(
+  order: PrintOrder,
+  event: OrderPrintEvent,
+  fallbackIp: string,
+): Promise<void> {
+  const targets = selectPrintTargets(getRoutablePrinters(), "kitchen_ticket");
+
+  if (targets.length === 0) {
+    // No registry yet, or no printer holds the kitchen role. The configured
+    // printer is what this app has always used; keep using it rather than
+    // silently dropping the venue's tickets on an upgrade.
+    await printOrder(fallbackIp, order, event);
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    targets.map((target) => printOrder(target.address, order, event, target.id)),
+  );
+
+  const failures = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+
+  if (failures.length < results.length) {
+    for (const failure of failures) {
+      log.warn(`Kitchen ticket for order ${order.id} failed on one printer`, failure.reason);
+    }
+    return;
+  }
+
+  throw failures[0]?.reason instanceof Error
+    ? failures[0].reason
+    : new Error("Kitchen ticket failed on every printer");
 }
 
 class PrintQueue {
@@ -171,6 +217,13 @@ class PrintQueue {
     const event = options.event ?? "order_created";
     const preClaimed = options.preClaimed === true;
     const now = Date.now();
+
+    // A venue that prints no kitchen tickets should not claim the order
+    // either — the claim is what tells every other station to stand down.
+    if (event !== "order_reprint" && !isKitchenTicketPrintingEnabled()) {
+      log.info(`Kitchen ticket skipped for order ${order.id} — disabled for this business`);
+      return false;
+    }
 
     if (requiresAutoPrintClaim(event, preClaimed) && !isAutoPrintClaimConfigured()) {
       log.warn(
@@ -306,7 +359,7 @@ class PrintQueue {
       }
 
       try {
-        await printOrder(config.printerIp, job.order, job.event);
+        await printOrderOnEveryKitchenPrinter(job.order, job.event, config.printerIp);
         this.recentPrints.set(this.dedupeKey(job.order.id, job.event), Date.now());
         this.persistQueue();
         if (job.historyEntryId) {

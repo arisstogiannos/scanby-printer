@@ -5,6 +5,7 @@ import { getConfig, savePairing } from "@/services/config-store";
 import { retainHistoryForBusiness } from "@/services/print-history-store";
 import { printQueue } from "@/services/print-queue";
 import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
+import { syncPrinterRegistry } from "@/services/printer-registry";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import { restartSupabaseListener } from "@/services/supabase-listener";
 import { showTrayNotification } from "@/services/tray-notifications";
@@ -40,6 +41,10 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
     }
 
     void autoConnectPrinterAfterPair();
+    // Pulls the venue's printers, and files this station's configured one as
+    // an `ALL` printer if the registry is still empty — which is how an
+    // existing venue gets into the registry without anyone typing an IP.
+    void syncPrinterRegistry();
     res.json({ ok: true });
   } catch (error) {
     log.error("Pair failed", error);

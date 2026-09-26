@@ -1,6 +1,8 @@
 import log from "electron-log";
 import { isConfigured, isPaired } from "@/services/config-store";
-import { reconnectPrinter } from "@/services/printer-connection";
+import { reconnectPrinter, refreshAllPrinterStatuses } from "@/services/printer-connection";
+import { syncPrinterRegistry } from "@/services/printer-registry";
+import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import { isSupabaseSubscribed } from "@/services/supabase-listener";
 import { showTrayNotification } from "@/services/tray-notifications";
 import { HEALTH_MONITOR_INTERVAL_MS, HEALTH_UNHEALTHY_THRESHOLD } from "@/shared/constants";
@@ -19,8 +21,14 @@ async function runHealthCheck(): Promise<void> {
   }
 
   const printerResult = await reconnectPrinter();
+  await refreshAllPrinterStatuses();
   const printerHealthy = printerResult.online;
   const supabaseHealthy = isSupabaseSubscribed();
+
+  // Backstop for a station that was asleep when the venue changed a role. The
+  // `printers_updated` broadcast is the fast path; this catches what it missed.
+  await syncPrinterRegistry();
+  receiptPrintQueue.retryHeldJobs();
 
   if (printerHealthy) {
     printerUnhealthyStreak = 0;

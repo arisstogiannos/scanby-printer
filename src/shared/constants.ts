@@ -5,6 +5,7 @@ export const CHANNEL_PREFIX = "orders";
 
 export const ALLOWED_ORIGINS = [
   "https://app.scanby.cloud",
+  "https://dev.scanby.cloud",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ] as const;
@@ -32,6 +33,12 @@ export const HEALTH_MONITOR_INTERVAL_MS = 5 * 60 * 1000;
 export const HEALTH_UNHEALTHY_THRESHOLD = 2;
 export const AUTO_SAVE_CANCEL_MS = 5_000;
 export const APP_STATE_FALLBACK_POLL_MS = 30_000;
+/**
+ * Backstop for the printer registry. The `printers_updated` broadcast is what
+ * normally refreshes it; this only covers a station that was asleep or offline
+ * when the venue changed a role.
+ */
+export const PRINTER_REGISTRY_POLL_MS = 10 * 60 * 1000;
 export const TRAY_PULSE_DURATION_MS = 3_000;
 export const TRAY_FAILURE_FLASH_MS = 2_000;
 export const DOWNLOAD_PAGE_URL = "https://github.com/arisstogiannos/scanby-printer/releases";

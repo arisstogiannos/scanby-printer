@@ -198,7 +198,9 @@
     "orderFailed": "Order #{{number}} failed",
     "receiptFailed": "Receipt {{series}} {{aa}} failed",
     "updateReady": "Update ready",
-    "updateReadyBody": "Version {{version}} is ready. Restart to install."
+    "updateReadyBody": "Version {{version}} is ready. Restart to install.",
+    "receiptNoFiscalPrinter": "Receipt {{series}} {{aa}} has nowhere to print",
+    "receiptNoFiscalPrinterBody": "No printer is set to print receipts. Assign the role in Scanby print settings and it will print automatically."
   },
   "tickets": {
     "appName": "Scanby Print Service",
@@ -221,5 +223,15 @@
     "footerThankYou": "Thank you!",
     "footerNotFiscal": "Not a tax receipt",
     "footerPoweredBy": "Powered by Scanby"
+  },
+  "printers": {
+    "title": "Roles",
+    "subtitle": "What each printer is allowed to print",
+    "roleKitchen": "Kitchen tickets",
+    "roleFiscal": "Receipts & slips",
+    "roleAll": "Everything",
+    "disabled": "Not in use",
+    "noFiscalWarning": "No printer prints receipts. Assign the role in Scanby print settings.",
+    "waitingDocuments": "{{count}} signed document(s) waiting for a receipt printer. They will print as soon as one is available."
   }
 }

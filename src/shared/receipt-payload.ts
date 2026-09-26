@@ -173,6 +173,10 @@ export function normalizePrintReceipt(body: unknown): PrintReceipt | null {
 
   return {
     id: receipt.id,
+    // Anything but an explicit order slip is treated as a receipt: the
+    // stricter class, so an unlabelled payload from an older app build can
+    // never route somewhere only a kitchen ticket belongs.
+    documentClass: receipt.documentClass === "order_slip" ? "order_slip" : "fiscal_receipt",
     businessName: receipt.businessName,
     legalName: receipt.legalName,
     vatId: receipt.vatId,

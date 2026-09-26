@@ -1,6 +1,6 @@
 {
   "name": "scanby-print-service",
-  "version": "1.0.22",
+  "version": "1.0.24",
   "description": "Scanby kitchen ticket print service for network thermal printers",
   "main": "./out/main/index.js",
   "type": "module",
@@ -23,7 +23,8 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "smoke-print": "tsx scripts/smoke-print.ts",
-    "test:core": "tsx scripts/test-core.ts"
+    "test:core": "tsx scripts/test-core.ts",
+    "icons": "electron scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.86.0",
@@ -65,7 +66,9 @@
     "icon": "icon.png",
     "files": [
       "out/**/*",
-      "resources/**/*"
+      "resources/**/*",
+      "!resources/appx/**",
+      "!resources/logo.svg"
     ],
     "protocols": [
       {
@@ -83,6 +86,7 @@
     },
     "appx": {
       "applicationId": "ScanbyPrintService",
+      "backgroundColor": "#FFFFFF",
       "identityName": "Scanby.ScanbyPrint",
       "publisher": "CN=5D048038-FED2-4B60-849D-A5B3AF4EF6C8",
       "publisherDisplayName": "Scanby",

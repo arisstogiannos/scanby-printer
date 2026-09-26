@@ -198,7 +198,9 @@
     "orderFailed": "Η παραγγελία #{{number}} απέτυχε",
     "receiptFailed": "Η απόδειξη {{series}} {{aa}} απέτυχε",
     "updateReady": "Ενημέρωση έτοιμη",
-    "updateReadyBody": "Η έκδοση {{version}} είναι έτοιμη. Επανεκκινήστε για εγκατάσταση."
+    "updateReadyBody": "Η έκδοση {{version}} είναι έτοιμη. Επανεκκινήστε για εγκατάσταση.",
+    "receiptNoFiscalPrinter": "Η απόδειξη {{series}} {{aa}} δεν έχει πού να εκτυπωθεί",
+    "receiptNoFiscalPrinterBody": "Κανένας εκτυπωτής δεν είναι ορισμένος για αποδείξεις. Ορίστε τον ρόλο στις ρυθμίσεις εκτύπωσης και θα εκτυπωθεί αυτόματα."
   },
   "tickets": {
     "appName": "Scanby Print Service",
@@ -221,5 +223,15 @@
     "footerThankYou": "Ευχαριστούμε!",
     "footerNotFiscal": "Δεν αποτελεί φορολογική απόδειξη",
     "footerPoweredBy": "Powered by Scanby"
+  },
+  "printers": {
+    "title": "Ρόλοι",
+    "subtitle": "Τι επιτρέπεται να τυπώνει κάθε εκτυπωτής",
+    "roleKitchen": "Δελτία κουζίνας",
+    "roleFiscal": "Αποδείξεις & δελτία",
+    "roleAll": "Τα πάντα",
+    "disabled": "Εκτός χρήσης",
+    "noFiscalWarning": "Κανένας εκτυπωτής δεν τυπώνει αποδείξεις. Ορίστε τον ρόλο στις ρυθμίσεις εκτύπωσης.",
+    "waitingDocuments": "{{count}} υπογεγραμμένα παραστατικά περιμένουν εκτυπωτή αποδείξεων. Θα εκτυπωθούν μόλις υπάρξει διαθέσιμος."
   }
 }

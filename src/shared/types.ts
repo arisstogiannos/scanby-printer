@@ -4,12 +4,43 @@ export type { Locale };
 
 export type PrinterStatus = "online" | "offline" | "printing" | "scanning";
 
+export type PrinterRole = "KITCHEN" | "FISCAL" | "ALL";
+
+export type PrinterTransport = "LAN" | "EMBEDDED";
+
+/** What is on the paper, as far as routing is concerned. */
+export type PrintDocumentClass = "kitchen_ticket" | "order_slip" | "fiscal_receipt";
+
+/**
+ * A printer as the Scanby registry holds it. Cached on disk so routing keeps
+ * working through an internet outage — the printers are on the venue's LAN,
+ * and losing the office connection is no reason to stop printing tickets.
+ */
+export type RegisteredPrinter = {
+  id: string;
+  name: string;
+  role: PrinterRole;
+  transport: PrinterTransport;
+  address: string;
+  enabled: boolean;
+};
+
 export type AppConfig = {
   businessId: string;
   businessName: string;
   supabaseUrl: string;
   supabasePublishableKey: string;
+  /**
+   * The single printer this app was configured with before roles existed.
+   * Still read, still written by the setup flow, and still the thing that gets
+   * registered as an `ALL` printer the first time the registry syncs — an
+   * upgrade must not stop a venue printing while nobody has assigned roles.
+   */
   printerIp: string;
+  /** The registry, last time it was pulled. Empty until the first sync. */
+  printers?: RegisteredPrinter[];
+  /** Mirrors `Business.kitchenTicketsEnabled`; defaults to printing. */
+  kitchenTicketsEnabled?: boolean;
 };
 
 export type PairPayload = {
@@ -51,11 +82,24 @@ export type PrinterScanSnapshot = {
   completedAt: string;
 };
 
+/** A registry printer plus the reachability only this station can know. */
+export type PrinterRuntimeInfo = RegisteredPrinter & {
+  status: PrinterStatus;
+};
+
 export type AppStateSnapshot = {
   paired: boolean;
   businessName: string | null;
   printerIp: string | null;
+  /** The aggregate across every printer: online if any of them is. */
   printerStatus: PrinterStatus;
+  printers: PrinterRuntimeInfo[];
+  /**
+   * A signed document the venue has nowhere to print. Set when the receipt
+   * queue gives up finding a fiscal printer; cleared when one prints. Drives
+   * the tray warning, so it must never be cleared by anything but a success.
+   */
+  unroutableFiscalCount: number;
   setupComplete: boolean;
   pendingPrinterPicker: string[] | null;
   lastScan: PrinterScanSnapshot | null;
@@ -97,6 +141,12 @@ export type PrintReceiptSignature = {
 
 export type PrintReceipt = {
   id: string;
+  /**
+   * Which printers may render this. Absent on payloads from an app build older
+   * than the registry — those are treated as `fiscal_receipt`, the stricter of
+   * the two, so an unlabelled document can never land on a kitchen roll.
+   */
+  documentClass: PrintDocumentClass;
   businessName: string;
   legalName: string;
   vatId: string;

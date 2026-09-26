@@ -9,6 +9,7 @@ import {
   statusLooksOnline,
 } from "@/services/printer-activity";
 import { probeSavedPrinterReachable } from "@/services/printer-discovery";
+import { getRoutablePrinters } from "@/services/printer-registry";
 
 export type PrinterConnectErrorCode = "not_paired" | "unreachable" | "invalid_ip";
 
@@ -99,4 +100,29 @@ async function probeSavedPrinter(): Promise<{ online: boolean; ip: string | null
 
   const result = await syncSavedPrinterStatus(printerIp);
   return { online: result.online, ip: result.ip };
+}
+
+/**
+ * Probes every registered printer and records each one's reachability.
+ *
+ * Per-printer rather than aggregate, because the two facts a venue needs are
+ * different: "something is printing" is not the same as "the till printer is
+ * reachable", and it is the second that decides whether a receipt has anywhere
+ * to go. Probes run together — a venue with four printers should not wait four
+ * timeouts to learn they are all unplugged.
+ */
+export async function refreshAllPrinterStatuses(): Promise<void> {
+  const printers = getRoutablePrinters().filter(
+    (printer) => printer.enabled && printer.transport === "LAN",
+  );
+  if (printers.length === 0) {
+    return;
+  }
+
+  await Promise.all(
+    printers.map(async (printer) => {
+      const reachable = await probeSavedPrinterReachable(printer.address);
+      appState.setPrinterStatusById(printer.id, reachable ? "online" : "offline");
+    }),
+  );
 }

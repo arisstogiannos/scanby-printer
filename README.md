@@ -58,6 +58,20 @@ Build Store package only locally:
 pnpm dist:win:store
 ```
 
+#### Store tile icons
+
+`resources/appx/` holds the branded MSIX tile assets (`StoreLogo`, `Square44x44Logo`,
+`Square150x150Logo`, `SmallTile`, `LargeTile`, `Wide310x150Logo`, each at scale
+100/125/150/200/400). **Do not delete it** — when that folder is missing, electron-builder
+silently falls back to its bundled Electron sample logos and certification fails with
+*10.1.1.11 On Device Tiles* ("tile icons include a default image").
+
+Those assets and `resources/icon.png` are generated from `resources/logo.svg`:
+
+```powershell
+pnpm icons
+```
+
 ## Scripts
 
 | Command | Description |
@@ -68,6 +82,7 @@ pnpm dist:win:store
 | `pnpm dist:mac` | macOS `.dmg` (requires macOS or CI) |
 | `pnpm dist:win` | Windows `.exe` + `.appx` |
 | `pnpm dist:win:store` | Windows `.appx` only (Store upload) |
+| `pnpm icons` | Regenerate app icon + Store tiles from `resources/logo.svg` |
 | `pnpm typecheck` | TypeScript check |
 | `pnpm check:fix` | Biome lint + format |
 | `pnpm smoke-print <ip>` | Print sample ticket to printer IP |

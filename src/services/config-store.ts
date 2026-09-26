@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AppConfig, PairPayload } from "@/shared/types";
+import type { AppConfig, PairPayload, RegisteredPrinter } from "@/shared/types";
 
 let userDataPath = "";
 let cachedConfig: AppConfig | null = null;
@@ -31,6 +31,19 @@ function isValidConfig(value: unknown): value is AppConfig {
   );
 }
 
+function parseCachedPrinters(value: unknown): RegisteredPrinter[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter(
+    (entry): entry is RegisteredPrinter =>
+      entry !== null &&
+      typeof entry === "object" &&
+      typeof (entry as RegisteredPrinter).id === "string" &&
+      typeof (entry as RegisteredPrinter).address === "string",
+  );
+}
+
 function loadConfigFromDisk(): AppConfig | null {
   if (!userDataPath) {
     return null;
@@ -47,7 +60,12 @@ function loadConfigFromDisk(): AppConfig | null {
     if (!isValidConfig(parsed)) {
       return null;
     }
-    return parsed;
+    const record = parsed as Record<string, unknown>;
+    return {
+      ...parsed,
+      printers: parseCachedPrinters(record.printers),
+      kitchenTicketsEnabled: record.kitchenTicketsEnabled !== false,
+    };
   } catch {
     return null;
   }
@@ -75,9 +93,26 @@ export function savePairing(payload: PairPayload): AppConfig {
     supabaseUrl: payload.supabaseUrl,
     supabasePublishableKey: payload.supabasePublishableKey,
     printerIp: existing?.printerIp ?? "",
+    // Pairing to a different business must not inherit the old one's printers.
+    printers: existing?.businessId === payload.businessId ? existing.printers : undefined,
+    kitchenTicketsEnabled: existing?.kitchenTicketsEnabled ?? true,
   };
   saveConfig(config);
   return config;
+}
+
+/** Replaces the cached registry wholesale — the server is the source of truth. */
+export function savePrinterRegistry(
+  printers: RegisteredPrinter[],
+  kitchenTicketsEnabled: boolean,
+): AppConfig {
+  const config = getConfig();
+  if (!config) {
+    throw new Error("Cannot cache printers before pairing");
+  }
+  const updated: AppConfig = { ...config, printers, kitchenTicketsEnabled };
+  saveConfig(updated);
+  return updated;
 }
 
 export function savePrinterIp(printerIp: string): AppConfig {

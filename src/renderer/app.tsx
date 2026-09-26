@@ -9,6 +9,7 @@ import { PairingSuccessBanner } from "./components/pairing-success-banner";
 import { PrintHistory } from "./components/print-history";
 import { PrinterCard } from "./components/printer-card";
 import { PrinterSetup } from "./components/printer-setup";
+import { RegisteredPrinters } from "./components/registered-printers";
 import { SettingsPanel } from "./components/settings-panel";
 import { TrayDiscoveryPrompt } from "./components/tray-discovery-prompt";
 import { UpdateBanner } from "./components/update-banner";
@@ -202,6 +203,11 @@ function AppContent({ state, onRefresh }: AppContentProps) {
             lastScan={state.lastScan}
             locale={state.locale}
             onUpdated={onRefresh}
+          />
+          {/* Renders nothing until the printer registry has synced. */}
+          <RegisteredPrinters
+            printers={state.printers}
+            unroutableFiscalCount={state.unroutableFiscalCount}
           />
           <SettingsPanel update={state.update} locale={state.locale} onUpdated={onRefresh} />
         </>

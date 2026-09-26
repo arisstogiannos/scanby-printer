@@ -9,6 +9,7 @@ import type { Locale } from "@/shared/i18n";
 import { localeTag, t } from "@/shared/i18n";
 import type {
   OrderPrintEvent,
+  PrinterStatus,
   PrintFontSize,
   PrintOrder,
   PrintOrderItem,
@@ -256,29 +257,42 @@ async function renderOrder(
   printer.cut();
 }
 
+/**
+ * `printerId` identifies the registry row so this job's outcome lands on the
+ * right printer's status. It is optional because the pre-roles setup flow and
+ * the test print still address a printer by IP alone.
+ */
+function setStatus(printerId: string | undefined, status: PrinterStatus): void {
+  appState.setPrinterStatus(status);
+  if (printerId) {
+    appState.setPrinterStatusById(printerId, status);
+  }
+}
+
 async function runPrinterJob(
   printerIp: string,
   printer: ThermalPrinter,
   successLabel: string,
+  printerId?: string,
 ): Promise<void> {
   await withPrintLock(async () => {
     beginPrintOperation();
-    appState.setPrinterStatus("printing");
+    setStatus(printerId, "printing");
 
     try {
       await printer.execute();
-      appState.setPrinterStatus("online");
+      setStatus(printerId, "online");
       log.info(successLabel);
     } catch (error) {
       const reachable = await probeSavedPrinterReachable(printerIp);
       if (reachable) {
-        appState.setPrinterStatus("online");
+        setStatus(printerId, "online");
         log.warn(`Printer job on ${printerIp} reported error but printer is reachable`, error);
         log.info(successLabel);
         return;
       }
 
-      appState.setPrinterStatus("offline");
+      setStatus(printerId, "offline");
       log.error(`Printer job failed on ${printerIp}`, error);
       throw error;
     } finally {
@@ -291,6 +305,7 @@ export async function printOrder(
   printerIp: string,
   order: PrintOrder,
   event: OrderPrintEvent = "order_created",
+  printerId?: string,
 ): Promise<void> {
   const locale = getLocale();
   const printer = createPrinter(printerIp, locale);
@@ -299,6 +314,7 @@ export async function printOrder(
     printerIp,
     printer,
     `Printed ${event} for order ${order.id} (#${order.number})`,
+    printerId,
   );
 }
 
@@ -457,13 +473,18 @@ export async function renderReceipt(printer: ThermalPrinter, receipt: PrintRecei
   printer.cut();
 }
 
-export async function printReceipt(printerIp: string, receipt: PrintReceipt): Promise<void> {
+export async function printReceipt(
+  printerIp: string,
+  receipt: PrintReceipt,
+  printerId?: string,
+): Promise<void> {
   const printer = createReceiptPrinter(printerIp);
   await renderReceipt(printer, receipt);
   await runPrinterJob(
     printerIp,
     printer,
     `Printed receipt ${receipt.series} ${receipt.aa} (${receipt.id})`,
+    printerId,
   );
 }
 

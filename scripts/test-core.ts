@@ -6,6 +6,7 @@ import { initI18n } from "../src/shared/i18n";
 import { normalizePairPayload } from "../src/shared/pair-payload";
 import { normalizeOrderPrintEvent, normalizePrintOrder } from "../src/shared/print-payload";
 import { normalizePrinterConnectPayload } from "../src/shared/printer-connect-payload";
+import { printerAcceptsDocument, selectPrintTargets } from "../src/shared/printer-routing";
 import { normalizePrintReceipt } from "../src/shared/receipt-payload";
 
 async function testBuildTicketLines(): Promise<void> {
@@ -329,6 +330,98 @@ function testPrinterConnectPayload(): void {
   assert.equal(normalizePrinterConnectPayload({ ip: "256.1.1.1" }), null);
 }
 
+function testPrinterRouting(): void {
+  // The invariant the whole feature exists for: a legal document may never
+  // reach a kitchen-only printer, and a kitchen ticket may never reach a
+  // fiscal-only one. Mirrored in the web app and the Android shell.
+  assert.equal(printerAcceptsDocument("KITCHEN", "fiscal_receipt"), false);
+  assert.equal(printerAcceptsDocument("KITCHEN", "order_slip"), false);
+  assert.equal(printerAcceptsDocument("FISCAL", "kitchen_ticket"), false);
+  assert.equal(printerAcceptsDocument("ALL", "kitchen_ticket"), true);
+  assert.equal(printerAcceptsDocument("ALL", "fiscal_receipt"), true);
+
+  const bar = {
+    id: "bar",
+    name: "Bar",
+    role: "KITCHEN" as const,
+    transport: "LAN" as const,
+    address: "10.0.0.2",
+    enabled: true,
+  };
+  const grill = { ...bar, id: "grill", name: "Grill", address: "10.0.0.3" };
+  const till = {
+    ...bar,
+    id: "till",
+    name: "Till",
+    role: "FISCAL" as const,
+    address: "10.0.0.4",
+  };
+  const spare = { ...bar, id: "spare", name: "Spare", enabled: false, address: "10.0.0.5" };
+
+  // Fan-out: both kitchen printers, never the till.
+  const kitchenTargets = selectPrintTargets([bar, grill, till, spare], "kitchen_ticket");
+  assert.deepEqual(
+    kitchenTargets.map((printer) => printer.id),
+    ["bar", "grill"],
+  );
+
+  // A receipt goes only to the till, and an order slip follows the receipt.
+  for (const documentClass of ["fiscal_receipt", "order_slip"] as const) {
+    const targets = selectPrintTargets([bar, grill, till], documentClass);
+    assert.deepEqual(
+      targets.map((printer) => printer.id),
+      ["till"],
+    );
+  }
+
+  // No fiscal printer registered means no targets — the receipt queue turns
+  // that into a held job and an alert, never a print on the kitchen roll.
+  assert.deepEqual(selectPrintTargets([bar, grill], "fiscal_receipt"), []);
+}
+
+function testReceiptDocumentClass(): void {
+  const slip = normalizePrintReceipt({
+    receipt: {
+      id: "r1",
+      documentClass: "order_slip",
+      businessName: "Cafe",
+      legalName: "Cafe AE",
+      vatId: "123456789",
+      title: "ΔΕΛΤΙΟ ΠΑΡΑΓΓΕΛΙΑΣ",
+      series: "A",
+      aa: 1,
+      momentIso: "2026-06-11T10:30:00.000Z",
+      payMethodLabel: "",
+      totalInCents: 1000,
+      lines: [],
+      vatRows: [],
+      signatures: [],
+    },
+  });
+  assert.equal(slip?.documentClass, "order_slip");
+
+  // An older app build sends no class at all. It must be treated as the
+  // stricter one, so an unlabelled document never routes to a kitchen roll.
+  const legacy = normalizePrintReceipt({
+    receipt: {
+      id: "r2",
+      businessName: "Cafe",
+      legalName: "Cafe AE",
+      vatId: "123456789",
+      title: "ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ ΠΩΛΗΣΗΣ",
+      series: "A",
+      aa: 2,
+      momentIso: "2026-06-11T10:30:00.000Z",
+      payMethodLabel: "ΜΕΤΡΗΤΑ",
+      totalInCents: 1000,
+      lines: [],
+      vatRows: [],
+      signatures: [],
+    },
+  });
+  assert.equal(legacy?.documentClass, "fiscal_receipt");
+}
+
 await testBuildTicketLines();
 testDashboardPairPayload();
 testDashboardPrintPayload();
@@ -339,4 +432,6 @@ await testOrderSlipLayout();
 await testWeighedDiscountedLayout();
 await testLegacyQuantityFallback();
 testConstants();
+testPrinterRouting();
+testReceiptDocumentClass();
 console.log("Core tests passed");
