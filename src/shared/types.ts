@@ -174,6 +174,13 @@ export type PrintReceipt = {
   area: string | null;
   /** Prints under the total; an order slip uses it to say the receipt follows. */
   footnote: string | null;
+  /**
+   * Α.1126/2024 7Α.2: an order slip may not print its total, so this drops the
+   * total, payment and receipt-discount rows and the VAT table's gross column.
+   */
+  hideTotals?: boolean;
+  /** Α.1126/2024 7Α.6: an order slip prints its issue moment on its own bold line. */
+  emphasizeMoment?: boolean;
   transmissionFailure: 1 | 2 | null;
   signatures: PrintReceiptSignature[];
   qrUrl: string | null;

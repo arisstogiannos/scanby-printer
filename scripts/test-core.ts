@@ -136,6 +136,10 @@ function testDashboardPrintPayload(): void {
   assert.equal(normalizePrintOrder({ order: baseOrder })?.fontSize, undefined);
 }
 
+/** Α.1126/2024 7Α.3: the disclaimer every 8.6 must carry. */
+const ORDER_SLIP_FOOTNOTE =
+  "ΤΟ ΠΑΡΟΝ ΕΙΝΑΙ ΠΛΗΡΟΦΟΡΙΑΚΟ ΣΤΟΙΧΕΙΟ ΚΑΙ ΔΕΝ ΑΠΟΤΕΛΕΙ ΝΟΜΙΜΗ ΦΟΡΟΛΟΓΙΚΗ ΑΠΟΔΕΙΞΗ/ΤΙΜΟΛΟΓΙΟ.";
+
 /** An 8.6 Δελτίο Παραγγελίας as the app puts it on the wire. */
 const ORDER_SLIP_PAYLOAD = {
   id: "receipt-1",
@@ -156,10 +160,22 @@ const ORDER_SLIP_PAYLOAD = {
   totalInCents: 700,
   payMethodLabel: "",
   area: "12",
-  footnote: "Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ",
+  footnote: ORDER_SLIP_FOOTNOTE,
+  hideTotals: true,
+  emphasizeMoment: true,
   transmissionFailure: null,
   signatures: [{ caption: "invoiceMark", data: "400001", format: 1 }],
   qrUrl: "https://scanby.cloud/r/abc",
+};
+
+/** The same sale as a receipt: it collects, so it prints its total and payment row. */
+const FISCAL_RECEIPT_PAYLOAD = {
+  ...ORDER_SLIP_PAYLOAD,
+  payMethodLabel: "ΜΕΤΡΗΤΑ",
+  area: null,
+  footnote: null,
+  hideTotals: false,
+  emphasizeMoment: false,
 };
 
 function testOrderSlipReceiptPayload(): void {
@@ -168,24 +184,43 @@ function testOrderSlipReceiptPayload(): void {
   // The table and the footnote are the whole reason a slip differs from a
   // receipt; dropping either silently is what this test exists to catch.
   assert.equal(slip?.area, "12");
-  assert.equal(slip?.footnote, "Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ");
+  assert.equal(slip?.footnote, ORDER_SLIP_FOOTNOTE);
   // Empty, so the renderer prints no payment row at all.
   assert.equal(slip?.payMethodLabel, "");
+  // Dropping either would print a total or bury the moment: both are 7Α breaches.
+  assert.equal(slip?.hideTotals, true);
+  assert.equal(slip?.emphasizeMoment, true);
 
   // A receipt omits both, and an older app build sends neither.
-  const receipt = normalizePrintReceipt({
-    receipt: { ...ORDER_SLIP_PAYLOAD, payMethodLabel: "ΜΕΤΡΗΤΑ", area: null, footnote: null },
-  });
+  const receipt = normalizePrintReceipt({ receipt: FISCAL_RECEIPT_PAYLOAD });
   assert.equal(receipt?.area, null);
   assert.equal(receipt?.footnote, null);
   assert.equal(receipt?.payMethodLabel, "ΜΕΤΡΗΤΑ");
+  assert.equal(receipt?.hideTotals, false);
+  assert.equal(receipt?.emphasizeMoment, false);
 
   const legacy = normalizePrintReceipt({
-    receipt: { ...ORDER_SLIP_PAYLOAD, area: undefined, footnote: undefined },
+    receipt: {
+      ...ORDER_SLIP_PAYLOAD,
+      area: undefined,
+      footnote: undefined,
+      hideTotals: undefined,
+      emphasizeMoment: undefined,
+    },
   });
   assert.ok(legacy);
   assert.equal(legacy?.area, null);
   assert.equal(legacy?.footnote, null);
+  // No flags means today's full layout, so an older app build is unaffected.
+  assert.equal(legacy?.hideTotals, false);
+  assert.equal(legacy?.emphasizeMoment, false);
+
+  // Only a real `true` counts; a stringly-typed flag must not hide a total.
+  const junk = normalizePrintReceipt({
+    receipt: { ...ORDER_SLIP_PAYLOAD, hideTotals: "true", emphasizeMoment: 1 },
+  });
+  assert.equal(junk?.hideTotals, false);
+  assert.equal(junk?.emphasizeMoment, false);
 }
 
 type RenderCall = { method: string; args: unknown[] };
@@ -214,6 +249,13 @@ function printedLines(calls: RenderCall[]): string[] {
   return calls.filter((call) => call.method === "println").map((call) => String(call.args[0]));
 }
 
+/** Every piece of text that reaches paper, from both `println` and `leftRight`. */
+function printedText(calls: RenderCall[]): string[] {
+  return calls
+    .filter((call) => call.method === "println" || call.method === "leftRight")
+    .flatMap((call) => call.args.map(String));
+}
+
 async function testOrderSlipLayout(): Promise<void> {
   const slip = normalizePrintReceipt({ receipt: ORDER_SLIP_PAYLOAD });
   assert.ok(slip);
@@ -223,37 +265,60 @@ async function testOrderSlipLayout(): Promise<void> {
   const lines = printedLines(calls);
 
   assert.ok(lines.includes("ΤΡΑΠΕΖΙ: 12"), "slip must print its table");
-  assert.ok(
-    lines.includes("Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ"),
-    "slip must say the receipt follows at settlement",
-  );
+  assert.ok(lines.includes(ORDER_SLIP_FOOTNOTE), "slip must carry the 7Α.3 disclaimer");
   // The old layout printed a bare amount against an empty label here.
   const payRows = calls.filter((call) => call.method === "leftRight" && call.args[0] === "");
   assert.equal(payRows.length, 0, "a slip collects nothing, so it prints no payment row");
 
-  const receiptOnly = normalizePrintReceipt({
-    receipt: { ...ORDER_SLIP_PAYLOAD, payMethodLabel: "ΜΕΤΡΗΤΑ", area: null, footnote: null },
-  });
+  // 7Α.2: no total anywhere — not the bold row, not the VAT table's gross column.
+  assert.ok(
+    !printedText(calls).some((text) => text.includes("ΣΥΝΟΛΟ")),
+    "a slip may not print its total",
+  );
+  // 7Α.1 still wants net and VAT per rate.
+  assert.ok(lines.includes("ΦΠΑ%     ΚΑΘΑΡΗ      ΦΠΑ"));
+  assert.ok(lines.includes("13%       6.19€   0.81€"));
+
+  // 7Α.6: the number on its own line, then the moment alone and in bold.
+  assert.equal(leftRightRow(calls, "A 42"), undefined);
+  const numberAt = calls.findIndex((call) => call.method === "println" && call.args[0] === "A 42");
+  assert.ok(numberAt >= 0, "slip must print its series and number");
+  assert.deepEqual(
+    calls.slice(numberAt + 1, numberAt + 4).map((call) => [call.method, typeof call.args[0]]),
+    [
+      ["bold", "boolean"],
+      ["println", "string"],
+      ["bold", "boolean"],
+    ],
+  );
+  assert.equal(calls[numberAt + 1]?.args[0], true);
+  assert.match(String(calls[numberAt + 2]?.args[0]), /\d{1,2}\/\d{1,2}\/\d{2,4}/);
+  assert.equal(calls[numberAt + 3]?.args[0], false);
+
+  const receiptOnly = normalizePrintReceipt({ receipt: FISCAL_RECEIPT_PAYLOAD });
   assert.ok(receiptOnly);
   const plain = recordingPrinter();
   await renderReceipt(plain.printer, receiptOnly);
   const plainLines = printedLines(plain.calls);
 
   assert.ok(!plainLines.some((line) => line.startsWith("ΤΡΑΠΕΖΙ")));
-  assert.ok(!plainLines.includes("Η ΑΠΟΔΕΙΞΗ ΕΚΔΙΔΕΤΑΙ ΚΑΤΑ ΤΗΝ ΕΞΟΦΛΗΣΗ"));
+  assert.ok(!plainLines.includes(ORDER_SLIP_FOOTNOTE));
   assert.ok(
     plain.calls.some((call) => call.method === "leftRight" && call.args[0] === "ΜΕΤΡΗΤΑ"),
     "a receipt still prints its payment row",
   );
+  assert.equal(leftRightRow(plain.calls, "ΣΥΝΟΛΟ"), "7.00€", "a receipt still prints its total");
+  assert.ok(plainLines.includes("ΦΠΑ%     ΚΑΘΑΡΗ      ΦΠΑ     ΣΥΝΟΛΟ"));
+  assert.ok(plainLines.includes("13%       6.19€   0.81€    7.00€"));
+  // Without the flag the moment stays on the number's row.
+  assert.match(leftRightRow(plain.calls, "A 42") ?? "", /\d{1,2}\/\d{1,2}\/\d{2,4}/);
+  assert.ok(!plainLines.includes("A 42"));
 }
 
 /** A weighed line, discounted, with a note — none of which used to print. */
 const WEIGHED_RECEIPT_PAYLOAD = {
-  ...ORDER_SLIP_PAYLOAD,
+  ...FISCAL_RECEIPT_PAYLOAD,
   title: "ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ ΠΩΛΗΣΗΣ",
-  payMethodLabel: "ΜΕΤΡΗΤΑ",
-  area: null,
-  footnote: null,
   comments: "Χωρίς σακούλα",
   lines: [
     {
@@ -295,6 +360,17 @@ async function testWeighedDiscountedLayout(): Promise<void> {
   const lines = printedLines(calls);
   assert.ok(lines.includes("ΠΑΡΑΤΗΡΗΣΕΙΣ"));
   assert.ok(lines.includes("Χωρίς σακούλα"));
+
+  // On a slip the receipt-level discount is a total too, so it goes; the
+  // per-line row stays, because it explains a price that does print.
+  const slip = normalizePrintReceipt({
+    receipt: { ...WEIGHED_RECEIPT_PAYLOAD, hideTotals: true },
+  });
+  assert.ok(slip);
+  const slipRender = recordingPrinter();
+  await renderReceipt(slipRender.printer, slip);
+  assert.equal(leftRightRow(slipRender.calls, "  ΕΚΠΤΩΣΗ"), "20.00€ - 2.00€");
+  assert.equal(leftRightRow(slipRender.calls, "ΣΥΝΟΛΙΚΗ ΕΚΠΤΩΣΗ"), undefined);
 }
 
 /** A build that predates `quantityLabel` still prints its piece count. */

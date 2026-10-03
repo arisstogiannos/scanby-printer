@@ -358,7 +358,17 @@ export async function renderReceipt(printer: ThermalPrinter, receipt: PrintRecei
   printer.println(receipt.title);
   printer.bold(false);
 
-  printer.leftRight(`${receipt.series} ${receipt.aa}`, formatReceiptMoment(receipt.momentIso));
+  if (receipt.emphasizeMoment) {
+    // Α.1126/2024 7Α.6: a slip's issue moment must stand out, so it gets its
+    // own bold line instead of sharing the number's.
+    printer.alignLeft();
+    printer.println(`${receipt.series} ${receipt.aa}`);
+    printer.bold(true);
+    printer.println(formatReceiptMoment(receipt.momentIso));
+    printer.bold(false);
+  } else {
+    printer.leftRight(`${receipt.series} ${receipt.aa}`, formatReceiptMoment(receipt.momentIso));
+  }
 
   if (receipt.area) {
     printer.println(`ΤΡΑΠΕΖΙ: ${receipt.area}`);
@@ -403,28 +413,35 @@ export async function renderReceipt(printer: ThermalPrinter, receipt: PrintRecei
   if (receipt.vatRows.length > 0) {
     printer.drawLine();
     printer.alignLeft();
-    printer.println("ΦΠΑ%     ΚΑΘΑΡΗ      ΦΠΑ     ΣΥΝΟΛΟ");
+    // A slip still owes net and VAT per rate (7Α.1); only the gross column,
+    // which sums to the total 7Α.2 forbids, comes off.
+    const vatHeader = "ΦΠΑ%     ΚΑΘΑΡΗ      ΦΠΑ";
+    printer.println(receipt.hideTotals ? vatHeader : `${vatHeader}     ΣΥΝΟΛΟ`);
     for (const row of receipt.vatRows) {
       const rate = formatVatRate(row.rateBps).padEnd(6);
       const net = formatReceiptEuro(row.netInCents).padStart(9);
       const vat = formatReceiptEuro(row.vatInCents).padStart(8);
-      const gross = formatReceiptEuro(row.grossInCents).padStart(9);
+      const gross = receipt.hideTotals ? "" : formatReceiptEuro(row.grossInCents).padStart(9);
       printer.println(`${rate}${net}${vat}${gross}`);
     }
   }
 
-  if (receipt.discountInCents > 0) {
+  // A receipt-level figure too; on a slip the per-line discounts explain each price.
+  if (receipt.discountInCents > 0 && !receipt.hideTotals) {
     printer.alignLeft();
     printer.leftRight("ΣΥΝΟΛΙΚΗ ΕΚΠΤΩΣΗ", `-${formatReceiptEuro(receipt.discountInCents)}`);
   }
 
   printer.drawLine();
-  printer.bold(true);
-  printer.leftRight("ΣΥΝΟΛΟ", formatReceiptEuro(receipt.totalInCents));
-  printer.bold(false);
-  // An order slip collects nothing, so it carries no label and prints no row.
-  if (receipt.payMethodLabel) {
-    printer.leftRight(receipt.payMethodLabel, formatReceiptEuro(receipt.totalInCents));
+  // Α.1126/2024 7Α.2: an order slip may not print its total.
+  if (!receipt.hideTotals) {
+    printer.bold(true);
+    printer.leftRight("ΣΥΝΟΛΟ", formatReceiptEuro(receipt.totalInCents));
+    printer.bold(false);
+    // An order slip collects nothing, so it carries no label and prints no row.
+    if (receipt.payMethodLabel) {
+      printer.leftRight(receipt.payMethodLabel, formatReceiptEuro(receipt.totalInCents));
+    }
   }
 
   if (receipt.footnote) {

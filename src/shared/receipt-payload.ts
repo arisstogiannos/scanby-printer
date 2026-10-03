@@ -195,6 +195,9 @@ export function normalizePrintReceipt(body: unknown): PrintReceipt | null {
     payMethodLabel: receipt.payMethodLabel,
     area: optionalText(receipt.area),
     footnote: optionalText(receipt.footnote),
+    // An older app build sends neither, and keeps today's full layout.
+    hideTotals: receipt.hideTotals === true,
+    emphasizeMoment: receipt.emphasizeMoment === true,
     transmissionFailure,
     signatures,
     qrUrl: typeof receipt.qrUrl === "string" ? receipt.qrUrl : null,
