@@ -479,7 +479,9 @@ export async function renderReceipt(printer: ThermalPrinter, receipt: PrintRecei
     }
   }
 
-  if (receipt.qrUrl) {
+  // One QR per receipt: the provider's QR signature wins, qrUrl is only the fallback.
+  const hasSignatureQr = receipt.signatures.some((signature) => signature.format === 3);
+  if (receipt.qrUrl && !hasSignatureQr) {
     printer.alignCenter();
     printer.printQR(receipt.qrUrl, { cellSize: 4, correction: "M", model: 2 });
     printer.newLine();
