@@ -339,6 +339,47 @@ function leftRightRow(calls: RenderCall[], left: string): string | undefined {
   return call === undefined ? undefined : String(call.args[1]);
 }
 
+/** ν.4308/2014 άρθρο 12 + myDATA: what an 11.1 must carry on paper. */
+async function testMandatoryRetailFields(): Promise<void> {
+  const receipt = normalizePrintReceipt({
+    receipt: {
+      ...FISCAL_RECEIPT_PAYLOAD,
+      doy: "Α' Αθηνών",
+      vatExemptionNote: "ΑΠΑΛΛΑΓΗ ΦΠΑ: Άρθρο 44 - Ειδικό καθεστώς μικρών επιχειρήσεων",
+      mark: "400001",
+      uid: "ABCDEF",
+      authenticationCode: null,
+      signatures: [
+        { caption: "invoiceMark", data: "400001", format: 1 },
+        { caption: "invoiceUid", data: "ABCDEF", format: 1 },
+      ],
+    },
+  });
+  assert.ok(receipt);
+
+  const { calls, printer } = recordingPrinter();
+  await renderReceipt(printer, receipt);
+  const lines = printedLines(calls);
+
+  assert.ok(lines.includes("ΔΟΥ: Α' Αθηνών"), "receipt must print the issuer's ΔΟΥ");
+  assert.ok(lines.includes("ΑΠΑΛΛΑΓΗ ΦΠΑ: Άρθρο 44 - Ειδικό καθεστώς μικρών επιχειρήσεων"));
+  assert.ok(lines.includes("ΜΑΡΚ: 400001"), "receipt must print its ΜΑΡΚ, labelled");
+  assert.ok(lines.includes("UID: ABCDEF"));
+  // The raw provider items carry the same values — they must not print twice.
+  assert.equal(lines.filter((line) => line.includes("400001")).length, 1);
+  assert.ok(!lines.includes("invoiceMark"));
+
+  // An older app build sends no labelled fields: the raw item is all there is.
+  const legacy = normalizePrintReceipt({ receipt: FISCAL_RECEIPT_PAYLOAD });
+  assert.ok(legacy);
+  assert.equal(legacy.doy, null);
+  assert.equal(legacy.mark, null);
+  const legacyRender = recordingPrinter();
+  await renderReceipt(legacyRender.printer, legacy);
+  assert.ok(printedLines(legacyRender.calls).includes("400001"));
+  assert.ok(!printedLines(legacyRender.calls).some((line) => line.startsWith("ΔΟΥ")));
+}
+
 async function testWeighedDiscountedLayout(): Promise<void> {
   const receipt = normalizePrintReceipt({ receipt: WEIGHED_RECEIPT_PAYLOAD });
   assert.ok(receipt);
@@ -561,6 +602,7 @@ testPrinterConnectPayload();
 testOrderPrintEventPayload();
 testOrderSlipReceiptPayload();
 await testOrderSlipLayout();
+await testMandatoryRetailFields();
 await testWeighedDiscountedLayout();
 await testLegacyQuantityFallback();
 testConstants();

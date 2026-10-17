@@ -180,6 +180,7 @@ export function normalizePrintReceipt(body: unknown): PrintReceipt | null {
     businessName: receipt.businessName,
     legalName: receipt.legalName,
     vatId: receipt.vatId,
+    doy: optionalText(receipt.doy),
     address: typeof receipt.address === "string" ? receipt.address : null,
     title: receipt.title,
     series: receipt.series,
@@ -198,6 +199,10 @@ export function normalizePrintReceipt(body: unknown): PrintReceipt | null {
     // An older app build sends neither, and keeps today's full layout.
     hideTotals: receipt.hideTotals === true,
     emphasizeMoment: receipt.emphasizeMoment === true,
+    vatExemptionNote: optionalText(receipt.vatExemptionNote),
+    mark: optionalText(receipt.mark),
+    uid: optionalText(receipt.uid),
+    authenticationCode: optionalText(receipt.authenticationCode),
     transmissionFailure,
     signatures,
     qrUrl: typeof receipt.qrUrl === "string" ? receipt.qrUrl : null,

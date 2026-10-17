@@ -14,6 +14,7 @@ import type {
   PrintOrder,
   PrintOrderItem,
   PrintReceipt,
+  PrintReceiptSignature,
 } from "@/shared/types";
 
 let printChain: Promise<void> = Promise.resolve();
@@ -342,6 +343,31 @@ function createReceiptPrinter(printerIp: string): ThermalPrinter {
   return createPrinter(printerIp, "el");
 }
 
+/** The document's AADE identifiers, labelled, in the order they print. */
+function fiscalIdRows(receipt: PrintReceipt): [string, string][] {
+  const rows: [string, string | null][] = [
+    ["ΜΑΡΚ", receipt.mark],
+    ["UID", receipt.uid],
+    ["ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ", receipt.authenticationCode],
+  ];
+  return rows.filter((row): row is [string, string] => row[1] !== null);
+}
+
+/**
+ * The provider also hands MARK/UID/authenticationCode back as signatures. Once
+ * the labelled row above printed the value, the raw item would only repeat it;
+ * an older app build sends no labelled field, so the raw item still prints.
+ */
+function isLabelledFiscalId(receipt: PrintReceipt, signature: PrintReceiptSignature): boolean {
+  const labelled: Record<string, string | null> = {
+    invoicemark: receipt.mark,
+    invoiceuid: receipt.uid,
+    authenticationcode: receipt.authenticationCode,
+  };
+  const value = labelled[signature.caption.trim().toLowerCase()];
+  return Boolean(value) && value === signature.data;
+}
+
 /** Exported for the layout test, the same way `buildTicketLines` is. */
 export async function renderReceipt(printer: ThermalPrinter, receipt: PrintReceipt): Promise<void> {
   printer.alignCenter();
@@ -352,6 +378,9 @@ export async function renderReceipt(printer: ThermalPrinter, receipt: PrintRecei
     printer.println(receipt.address);
   }
   printer.println(`ΑΦΜ: ${receipt.vatId}`);
+  if (receipt.doy) {
+    printer.println(`ΔΟΥ: ${receipt.doy}`);
+  }
 
   printer.newLine();
   printer.bold(true);
@@ -426,6 +455,11 @@ export async function renderReceipt(printer: ThermalPrinter, receipt: PrintRecei
     }
   }
 
+  if (receipt.vatExemptionNote) {
+    printer.alignLeft();
+    printer.println(receipt.vatExemptionNote);
+  }
+
   // A receipt-level figure too; on a slip the per-line discounts explain each price.
   if (receipt.discountInCents > 0 && !receipt.hideTotals) {
     printer.alignLeft();
@@ -464,7 +498,15 @@ export async function renderReceipt(printer: ThermalPrinter, receipt: PrintRecei
     printer.bold(false);
   }
 
+  printer.alignLeft();
+  for (const [label, value] of fiscalIdRows(receipt)) {
+    printer.println(`${label}: ${value}`);
+  }
+
   for (const signature of receipt.signatures) {
+    if (isLabelledFiscalId(receipt, signature)) {
+      continue;
+    }
     if (signature.caption) {
       printer.alignLeft();
       printer.println(signature.caption);

@@ -155,6 +155,8 @@ export type PrintReceipt = {
   businessName: string;
   legalName: string;
   vatId: string;
+  /** ΔΟΥ, printed under the ΑΦΜ. Absent from an older app build. */
+  doy: string | null;
   address: string | null;
   title: string;
   series: string;
@@ -181,7 +183,18 @@ export type PrintReceipt = {
   hideTotals?: boolean;
   /** Α.1126/2024 7Α.6: an order slip prints its issue moment on its own bold line. */
   emphasizeMoment?: boolean;
+  /** «ΑΠΑΛΛΑΓΗ ΦΠΑ: …» with the legal article; prints under the VAT table. */
+  vatExemptionNote: string | null;
+  /** AADE ΜΑΡΚ. */
+  mark: string | null;
+  /** The provider's document identifier. */
+  uid: string | null;
+  authenticationCode: string | null;
   transmissionFailure: 1 | 2 | null;
+  /**
+   * May repeat MARK/UID/authenticationCode as raw provider items; the renderer
+   * skips those once the labelled field above carries the same value.
+   */
   signatures: PrintReceiptSignature[];
   qrUrl: string | null;
 };
