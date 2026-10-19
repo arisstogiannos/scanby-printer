@@ -135,6 +135,8 @@ export function applyPrinterRegistry(
 type SyncPrinterRegistryOptions = {
   /** A printer this station just connected to, filed even when the registry has rows. */
   reportAddress?: string;
+  /** Where `reportAddress` was before it moved; the server re-addresses that row. */
+  previousAddress?: string;
 };
 
 /**
@@ -167,6 +169,12 @@ export async function syncPrinterRegistry(
   const reportAddress =
     options.reportAddress?.trim() ||
     (knownAddress && (config.printers?.length ?? 0) === 0 ? knownAddress : undefined);
+  const previousAddress = options.reportAddress ? options.previousAddress?.trim() : undefined;
+  const reported = {
+    address: reportAddress,
+    transport: "LAN",
+    ...(previousAddress && previousAddress !== reportAddress ? { previousAddress } : {}),
+  };
 
   try {
     const response = await fetch(url, {
@@ -176,7 +184,7 @@ export async function syncPrinterRegistry(
         ...(reportAddress ? { "Content-Type": "application/json" } : {}),
       },
       ...(reportAddress
-        ? { body: JSON.stringify({ printers: [{ address: reportAddress, transport: "LAN" }] }) }
+        ? { body: JSON.stringify({ printers: [reported] }) }
         : {}),
       signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
     });

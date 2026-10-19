@@ -29,11 +29,16 @@ type ConnectToPrinterOptions = {
    * for the connect: it registers the printer itself, with the name typed.
    */
   report?: boolean;
+  /**
+   * The address this same printer answered on before it moved (auto-rescan),
+   * so the registry re-addresses its row instead of filing a second printer.
+   */
+  previousAddress?: string;
 };
 
 export async function connectToPrinter(
   ip: string,
-  { report = true }: ConnectToPrinterOptions = {},
+  { report = true, previousAddress }: ConnectToPrinterOptions = {},
 ): Promise<{ ip: string }> {
   const printerIp = ip.trim();
   if (!printerIp) {
@@ -59,7 +64,7 @@ export async function connectToPrinter(
   // moved — must reach the registry, or the dashboard never hears of it and
   // this station keeps routing to the old list.
   if (report) {
-    void syncPrinterRegistry({ reportAddress: printerIp });
+    void syncPrinterRegistry({ reportAddress: printerIp, previousAddress });
   }
 
   return { ip: printerIp };

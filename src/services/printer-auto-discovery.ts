@@ -92,7 +92,9 @@ export async function autoRescanForPrinter(): Promise<AutoRescanResult> {
     }
 
     try {
-      await connectToPrinter(ip);
+      // The saved printer went quiet and exactly one printer answers elsewhere:
+      // it is the same one on a new lease, so its registry row moves with it.
+      await connectToPrinter(ip, { previousAddress: savedIp ?? undefined });
       showTrayNotification(
         t("notifications.printerMoved"),
         t("notifications.printerMovedBody", { ip }),
