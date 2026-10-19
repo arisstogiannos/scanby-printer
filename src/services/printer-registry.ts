@@ -26,7 +26,7 @@ function parseFontSize(value: unknown): PrintFontSize | undefined {
   return undefined;
 }
 
-function parsePrinter(raw: unknown): RegisteredPrinter | null {
+export function parseRegisteredPrinter(raw: unknown): RegisteredPrinter | null {
   if (raw === null || typeof raw !== "object") {
     return null;
   }
@@ -109,6 +109,35 @@ export function findPrinterById(printerId: string): RegisteredPrinter | null {
 }
 
 /**
+ * Shows the window and `/status` what this station routes to right now. Runs
+ * whether or not the server answered: a station that cannot reach the API
+ * still prints to its cached registry or its configured IP, and a dashboard
+ * that sees an empty list concludes this PC has no printer at all.
+ */
+export function publishRoutablePrinters(): RegisteredPrinter[] {
+  // The window and `/status` show what *this* station can drive, not every
+  // printer in the venue — a POS terminal's built-in printer listed here
+  // would read as "reachable" to a dashboard deciding where a receipt goes.
+  const routable = getRoutablePrinters();
+  appState.setPrinters(routable);
+  return routable;
+}
+
+/** Caches a registry, from the server's answer or pushed by the dashboard. */
+export function applyPrinterRegistry(
+  printers: RegisteredPrinter[],
+  kitchenTicketsEnabled: boolean,
+): RegisteredPrinter[] {
+  savePrinterRegistry(printers, kitchenTicketsEnabled);
+  return publishRoutablePrinters();
+}
+
+type SyncPrinterRegistryOptions = {
+  /** A printer this station just connected to, filed even when the registry has rows. */
+  reportAddress?: string;
+};
+
+/**
  * Pulls the registry and reports what this station can reach.
  *
  * The report is what gets the venue's existing printer into the registry
@@ -116,7 +145,9 @@ export function findPrinterById(printerId: string): RegisteredPrinter | null {
  * up with, and the server files it as an `ALL` printer the venue can then name
  * and assign. Reporting never overwrites a name or role already set.
  */
-export async function syncPrinterRegistry(): Promise<RegisteredPrinter[]> {
+export async function syncPrinterRegistry(
+  options: SyncPrinterRegistryOptions = {},
+): Promise<RegisteredPrinter[]> {
   const config = getConfig();
   const base = apiBase();
   const secret = process.env.PRINT_CLAIM_SECRET;
@@ -125,46 +156,44 @@ export async function syncPrinterRegistry(): Promise<RegisteredPrinter[]> {
     if (!isRegistrySyncConfigured()) {
       log.info("Printer registry sync skipped — SCANBY_API_URL or PRINT_CLAIM_SECRET not set");
     }
-    return getRoutablePrinters();
+    return config ? publishRoutablePrinters() : getRoutablePrinters();
   }
 
   const url = `${base}/api/businesses/${encodeURIComponent(config.businessId)}/printers`;
   const knownAddress = config.printerIp?.trim();
-  // Only report on a first sync. Once the registry holds rows, re-reporting a
-  // stale local IP every poll would resurrect a printer the venue deleted.
-  const shouldReport = knownAddress && (config.printers?.length ?? 0) === 0;
+  // Only report the saved IP on a first sync. Once the registry holds rows,
+  // re-reporting a stale local IP every poll would resurrect a printer the
+  // venue deleted. A printer connected just now is reported on purpose.
+  const reportAddress =
+    options.reportAddress?.trim() ||
+    (knownAddress && (config.printers?.length ?? 0) === 0 ? knownAddress : undefined);
 
   try {
     const response = await fetch(url, {
-      method: shouldReport ? "POST" : "GET",
+      method: reportAddress ? "POST" : "GET",
       headers: {
         Authorization: `Bearer ${secret}`,
-        ...(shouldReport ? { "Content-Type": "application/json" } : {}),
+        ...(reportAddress ? { "Content-Type": "application/json" } : {}),
       },
-      ...(shouldReport
-        ? { body: JSON.stringify({ printers: [{ address: knownAddress, transport: "LAN" }] }) }
+      ...(reportAddress
+        ? { body: JSON.stringify({ printers: [{ address: reportAddress, transport: "LAN" }] }) }
         : {}),
       signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
     });
 
     if (!response.ok) {
       log.warn(`Printer registry sync failed (${response.status}) — keeping the cached list`);
-      return getRoutablePrinters();
+      return publishRoutablePrinters();
     }
 
     const data = (await response.json()) as RegistryResponse;
     const printers = Array.isArray(data.printers)
       ? data.printers
-          .map(parsePrinter)
+          .map(parseRegisteredPrinter)
           .filter((printer): printer is RegisteredPrinter => printer !== null)
       : [];
 
-    savePrinterRegistry(printers, data.kitchenTicketsEnabled !== false);
-    // The window and `/status` show what *this* station can drive, not every
-    // printer in the venue — a POS terminal's built-in printer listed here
-    // would read as "reachable" to a dashboard deciding where a receipt goes.
-    const routable = getRoutablePrinters();
-    appState.setPrinters(routable);
+    const routable = applyPrinterRegistry(printers, data.kitchenTicketsEnabled !== false);
     log.info(
       `Printer registry synced: ${printers.length} printer(s), ${routable.length} reachable here`,
     );
@@ -172,6 +201,6 @@ export async function syncPrinterRegistry(): Promise<RegisteredPrinter[]> {
   } catch (error) {
     // A cached registry is the whole point: never clear it on a failed pull.
     log.warn("Printer registry sync request failed — keeping the cached list", error);
-    return getRoutablePrinters();
+    return publishRoutablePrinters();
   }
 }

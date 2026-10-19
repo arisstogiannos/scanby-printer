@@ -57,7 +57,38 @@ class AppState extends EventEmitter<AppStateEvents> {
         this.printerStatuses.delete(id);
       }
     }
+    // A printer just added to the list may be the one already probed by IP;
+    // without this it reads "offline" until the next health check.
+    for (const printer of this.savedIpPrinters()) {
+      if (!this.printerStatuses.has(printer.id)) {
+        this.printerStatuses.set(printer.id, this.printerStatus);
+      }
+    }
     this.emitChange();
+  }
+
+  /**
+   * The outcome of probing the configured printer by IP. It lands on the
+   * aggregate the window shows and on that printer's own row, so the window
+   * and the dashboard reading `/status` never disagree about the same printer.
+   */
+  setSavedPrinterStatus(status: PrinterStatus): void {
+    const unchanged =
+      this.printerStatus === status &&
+      this.savedIpPrinters().every((printer) => this.printerStatuses.get(printer.id) === status);
+    if (unchanged) {
+      return;
+    }
+    this.printerStatus = status;
+    for (const printer of this.savedIpPrinters()) {
+      this.printerStatuses.set(printer.id, status);
+    }
+    this.emitChange();
+  }
+
+  private savedIpPrinters(): RegisteredPrinter[] {
+    const ip = this.printerIp;
+    return ip ? this.printers.filter((printer) => printer.address === ip) : [];
   }
 
   setPrinterStatusById(printerId: string, status: PrinterStatus): void {

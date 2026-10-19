@@ -11,7 +11,8 @@ export async function printerConnectHandler(req: Request, res: Response): Promis
   }
 
   try {
-    const result = await connectToPrinter(payload.ip);
+    // The dashboard registers what it connects through its own session.
+    const result = await connectToPrinter(payload.ip, { report: false });
     log.info(`Connected printer at ${result.ip}`);
     res.json({ ok: true, printerIp: result.ip });
   } catch (error) {

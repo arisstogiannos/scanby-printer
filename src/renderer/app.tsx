@@ -45,6 +45,18 @@ function AppLoadError({ message }: { message: string }) {
   );
 }
 
+/** A name the venue gave the printer; an IP-only fallback entry has none. */
+function registeredPrinterName(
+  printers: RendererAppState["printers"],
+  printerIp: string | null,
+): string | null {
+  const printer = printers.find(
+    (entry) => entry.address === printerIp && !entry.id.startsWith("legacy:"),
+  );
+  const name = printer?.name.trim();
+  return name && name !== printerIp ? name : null;
+}
+
 type AppContentProps = {
   state: RendererAppState;
   onRefresh: () => Promise<void>;
@@ -198,15 +210,16 @@ function AppContent({ state, onRefresh }: AppContentProps) {
           />
           <PrinterCard
             printerIp={state.printerIp}
+            printerName={registeredPrinterName(state.printers, state.printerIp)}
             printerStatus={state.printerStatus}
             pendingPrinterPicker={state.pendingPrinterPicker}
             lastScan={state.lastScan}
             locale={state.locale}
             onUpdated={onRefresh}
           />
-          {/* Renders nothing until the printer registry has synced. */}
+          {/* Renders nothing until the registry arrives; the IP fallback is the card above. */}
           <RegisteredPrinters
-            printers={state.printers}
+            printers={state.printers.filter((printer) => !printer.id.startsWith("legacy:"))}
             unroutableFiscalCount={state.unroutableFiscalCount}
           />
           <SettingsPanel update={state.update} locale={state.locale} onUpdated={onRefresh} />

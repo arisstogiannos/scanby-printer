@@ -6,7 +6,8 @@ import { loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const printClaimSecret = env.PRINT_CLAIM_SECRET ?? process.env.PRINT_CLAIM_SECRET ?? "";
+  // Trimmed: a secret pasted with a trailing newline is rejected by the server.
+  const printClaimSecret = (env.PRINT_CLAIM_SECRET ?? process.env.PRINT_CLAIM_SECRET ?? "").trim();
   const scanbyApiUrl =
     env.SCANBY_API_URL ?? process.env.SCANBY_API_URL ?? "https://app.scanby.cloud";
 

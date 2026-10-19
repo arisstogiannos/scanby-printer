@@ -9,7 +9,7 @@ import {
   statusLooksOnline,
 } from "@/services/printer-activity";
 import { probeSavedPrinterReachable } from "@/services/printer-discovery";
-import { getRoutablePrinters } from "@/services/printer-registry";
+import { getRoutablePrinters, syncPrinterRegistry } from "@/services/printer-registry";
 
 export type PrinterConnectErrorCode = "not_paired" | "unreachable" | "invalid_ip";
 
@@ -23,7 +23,18 @@ export class PrinterConnectError extends Error {
   }
 }
 
-export async function connectToPrinter(ip: string): Promise<{ ip: string }> {
+type ConnectToPrinterOptions = {
+  /**
+   * Files the printer in the venue's registry. Off when the dashboard asked
+   * for the connect: it registers the printer itself, with the name typed.
+   */
+  report?: boolean;
+};
+
+export async function connectToPrinter(
+  ip: string,
+  { report = true }: ConnectToPrinterOptions = {},
+): Promise<{ ip: string }> {
   const printerIp = ip.trim();
   if (!printerIp) {
     throw new PrinterConnectError("invalid_ip", "Invalid IP");
@@ -40,10 +51,16 @@ export async function connectToPrinter(ip: string): Promise<{ ip: string }> {
 
   savePrinterIp(printerIp);
   appState.setPrinterIp(printerIp);
-  appState.setPrinterStatus("online");
+  appState.setSavedPrinterStatus("online");
   appState.setSetupComplete();
   appState.clearPendingPrinterPicker();
   await enableAutoLaunch();
+  // A printer connected here — from the window, or found again after its IP
+  // moved — must reach the registry, or the dashboard never hears of it and
+  // this station keeps routing to the old list.
+  if (report) {
+    void syncPrinterRegistry({ reportAddress: printerIp });
+  }
 
   return { ip: printerIp };
 }
@@ -83,7 +100,7 @@ export async function syncSavedPrinterStatus(
     return { online: statusLooksOnline(statusAfterProbe), ip: printerIp };
   }
 
-  appState.setPrinterStatus(reachable ? "online" : "offline");
+  appState.setSavedPrinterStatus(reachable ? "online" : "offline");
   return { online: reachable, ip: printerIp };
 }
 
@@ -94,7 +111,7 @@ async function probeSavedPrinter(): Promise<{ online: boolean; ip: string | null
 
   const printerIp = appState.getSnapshot().printerIp ?? getConfig()?.printerIp ?? null;
   if (!printerIp) {
-    appState.setPrinterStatus("offline");
+    appState.setSavedPrinterStatus("offline");
     return { online: false, ip: null };
   }
 

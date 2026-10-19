@@ -17,6 +17,7 @@ import {
   shutdownPrinterReconnectMonitor,
   startPrinterReconnectMonitor,
 } from "@/services/printer-reconnect";
+import { publishRoutablePrinters } from "@/services/printer-registry";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
 import { startStationHeartbeat, stopStationHeartbeat } from "@/services/station-heartbeat";
 import { restartSupabaseListener, shutdownSupabaseListener } from "@/services/supabase-listener";
@@ -52,8 +53,13 @@ export async function bootstrapServices(): Promise<void> {
     appState.setPaired(config.businessName);
     if (config.printerIp) {
       appState.setPrinterIp(config.printerIp);
+    }
+    // The cached registry, so `/status` lists this station's printers before
+    // the first server sync — or when the server cannot be reached at all.
+    publishRoutablePrinters();
+    if (config.printerIp) {
       const online = await probeSavedPrinterReachable(config.printerIp);
-      appState.setPrinterStatus(online ? "online" : "offline");
+      appState.setSavedPrinterStatus(online ? "online" : "offline");
     }
     if (isConfigured()) {
       appState.setSetupComplete();

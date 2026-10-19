@@ -4,6 +4,8 @@ import { PrinterActions } from "./printer-actions";
 
 type PrinterCardProps = {
   printerIp: string | null;
+  /** The venue's name for this printer, once the registry has it. */
+  printerName: string | null;
   printerStatus: PrinterStatus;
   pendingPrinterPicker: string[] | null;
   lastScan: PrinterScanSnapshot | null;
@@ -26,6 +28,7 @@ function statusDotClass(status: PrinterStatus): string {
 
 export function PrinterCard({
   printerIp,
+  printerName,
   printerStatus,
   pendingPrinterPicker,
   lastScan,
@@ -53,7 +56,14 @@ export function PrinterCard({
         <div className="min-w-0 flex-1">
           {printerIp ? (
             <>
-              <p className="font-mono text-sm text-zinc-100">{printerIp}</p>
+              {printerName ? (
+                <p className="truncate text-sm text-zinc-100">
+                  {printerName}
+                  <span className="ml-2 font-mono text-xs text-zinc-500">{printerIp}</span>
+                </p>
+              ) : (
+                <p className="font-mono text-sm text-zinc-100">{printerIp}</p>
+              )}
               <p className="mt-0.5 text-xs text-zinc-500">{statusLabels[printerStatus]}</p>
             </>
           ) : (
