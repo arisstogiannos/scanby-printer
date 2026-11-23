@@ -207,6 +207,7 @@ function AppContent({ state, onRefresh }: AppContentProps) {
           <BusinessCard
             businessId={state.configSummary.businessId}
             businessName={state.businessName ?? t("app.yourVenue")}
+            needsReconnect={state.stationNeedsReconnect}
           />
           <PrinterCard
             printerIp={state.printerIp}

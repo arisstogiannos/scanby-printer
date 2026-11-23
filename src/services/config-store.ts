@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isStationCredential } from "@/shared/station-credential";
 import type { AppConfig, PairPayload, RegisteredPrinter } from "@/shared/types";
 
 let userDataPath = "";
@@ -65,6 +66,10 @@ function loadConfigFromDisk(): AppConfig | null {
       ...parsed,
       printers: parseCachedPrinters(record.printers),
       kitchenTicketsEnabled: record.kitchenTicketsEnabled !== false,
+      stationCredential: isStationCredential(record.stationCredential)
+        ? record.stationCredential
+        : undefined,
+      realtimePrivate: record.realtimePrivate === true,
     };
   } catch {
     return null;
@@ -87,6 +92,7 @@ export function isPaired(): boolean {
 
 export function savePairing(payload: PairPayload): AppConfig {
   const existing = getConfig();
+  const sameBusiness = existing?.businessId === payload.businessId;
   const config: AppConfig = {
     businessId: payload.businessId,
     businessName: payload.businessName,
@@ -94,11 +100,43 @@ export function savePairing(payload: PairPayload): AppConfig {
     supabasePublishableKey: payload.supabasePublishableKey,
     printerIp: existing?.printerIp ?? "",
     // Pairing to a different business must not inherit the old one's printers.
-    printers: existing?.businessId === payload.businessId ? existing.printers : undefined,
+    printers: sameBusiness ? existing.printers : undefined,
     kitchenTicketsEnabled: existing?.kitchenTicketsEnabled ?? true,
+    // A credential is bound to one business: never carried to another.
+    stationCredential:
+      payload.stationCredential ?? (sameBusiness ? existing.stationCredential : undefined),
+    realtimePrivate:
+      payload.privateChannels ?? (sameBusiness ? existing.realtimePrivate : undefined),
   };
   saveConfig(config);
   return config;
+}
+
+/** The dashboard handing this paired station its own credential. */
+export function saveStationCredential(
+  stationCredential: string,
+  realtimePrivate: boolean | undefined,
+): AppConfig {
+  const config = getConfig();
+  if (!config) {
+    throw new Error("Cannot save a station credential before pairing");
+  }
+  const updated: AppConfig = {
+    ...config,
+    stationCredential,
+    realtimePrivate: realtimePrivate ?? config.realtimePrivate,
+  };
+  saveConfig(updated);
+  return updated;
+}
+
+/** What the server last said about its order channels; kept for when it cannot be asked. */
+export function saveRealtimeMode(realtimePrivate: boolean): void {
+  const config = getConfig();
+  if (!config || config.realtimePrivate === realtimePrivate) {
+    return;
+  }
+  saveConfig({ ...config, realtimePrivate });
 }
 
 /** Replaces the cached registry wholesale — the server is the source of truth. */

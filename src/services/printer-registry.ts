@@ -1,6 +1,12 @@
 import log from "electron-log";
 import { appState } from "@/services/app-state";
 import { getConfig, savePrinterRegistry } from "@/services/config-store";
+import {
+  hasScanbyAuth,
+  reportScanbyAuthAccepted,
+  reportScanbyAuthRejected,
+  resolveScanbyAuth,
+} from "@/services/scanby-auth";
 import type {
   PrinterRole,
   PrinterTransport,
@@ -57,7 +63,7 @@ function apiBase(): string | null {
 }
 
 function isRegistrySyncConfigured(): boolean {
-  return Boolean(apiBase() && process.env.PRINT_CLAIM_SECRET && getConfig()?.businessId);
+  return Boolean(apiBase() && hasScanbyAuth() && getConfig()?.businessId);
 }
 
 /**
@@ -152,11 +158,13 @@ export async function syncPrinterRegistry(
 ): Promise<RegisteredPrinter[]> {
   const config = getConfig();
   const base = apiBase();
-  const secret = process.env.PRINT_CLAIM_SECRET;
+  const auth = resolveScanbyAuth();
 
-  if (!base || !secret || !config?.businessId) {
+  if (!base || !auth || !config?.businessId) {
     if (!isRegistrySyncConfigured()) {
-      log.info("Printer registry sync skipped — SCANBY_API_URL or PRINT_CLAIM_SECRET not set");
+      log.info(
+        "Printer registry sync skipped — SCANBY_API_URL, or a station credential or PRINT_CLAIM_SECRET, not set",
+      );
     }
     return config ? publishRoutablePrinters() : getRoutablePrinters();
   }
@@ -180,19 +188,22 @@ export async function syncPrinterRegistry(
     const response = await fetch(url, {
       method: reportAddress ? "POST" : "GET",
       headers: {
-        Authorization: `Bearer ${secret}`,
+        Authorization: auth.authorization,
         ...(reportAddress ? { "Content-Type": "application/json" } : {}),
       },
-      ...(reportAddress
-        ? { body: JSON.stringify({ printers: [reported] }) }
-        : {}),
+      ...(reportAddress ? { body: JSON.stringify({ printers: [reported] }) } : {}),
       signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
     });
 
+    if (response.status === 401 || response.status === 403) {
+      // The next sync goes out with whatever the server still accepts.
+      reportScanbyAuthRejected(auth.kind);
+    }
     if (!response.ok) {
       log.warn(`Printer registry sync failed (${response.status}) — keeping the cached list`);
       return publishRoutablePrinters();
     }
+    reportScanbyAuthAccepted(auth.kind);
 
     const data = (await response.json()) as RegistryResponse;
     const printers = Array.isArray(data.printers)

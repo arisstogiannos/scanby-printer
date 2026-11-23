@@ -1,3 +1,4 @@
+import { isStationCredential } from "@/shared/station-credential";
 import type { PairPayload } from "@/shared/types";
 
 function deriveSupabaseUrlFromKey(key: string): string | null {
@@ -52,5 +53,9 @@ export function normalizePairPayload(body: unknown): PairPayload | null {
     businessName,
     supabaseUrl,
     supabasePublishableKey,
+    // A malformed credential is left out, never fatal: the pairing still
+    // works on the build's secret, and the dashboard issues one on its next sync.
+    ...(isStationCredential(o.stationCredential) ? { stationCredential: o.stationCredential } : {}),
+    ...(typeof o.privateChannels === "boolean" ? { privateChannels: o.privateChannels } : {}),
   };
 }

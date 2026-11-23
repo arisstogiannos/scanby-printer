@@ -25,6 +25,7 @@ class AppState extends EventEmitter<AppStateEvents> {
   /** Keyed by printer id; a printer with no entry has never been probed. */
   private printerStatuses = new Map<string, PrinterStatus>();
   private unroutableFiscalCount = 0;
+  private stationNeedsReconnect = false;
 
   getSnapshot(): AppStateSnapshot {
     return {
@@ -34,6 +35,7 @@ class AppState extends EventEmitter<AppStateEvents> {
       printerStatus: this.printerStatus,
       printers: this.getPrinterRuntimeInfo(),
       unroutableFiscalCount: this.unroutableFiscalCount,
+      stationNeedsReconnect: this.stationNeedsReconnect,
       setupComplete: this.setupComplete,
       pendingPrinterPicker: this.pendingPrinterPicker,
       lastScan: this.lastScan,
@@ -132,6 +134,15 @@ class AppState extends EventEmitter<AppStateEvents> {
     this.emitChange();
   }
 
+  /** Set while the server accepts none of this station's credentials. */
+  setStationNeedsReconnect(needed: boolean): void {
+    if (this.stationNeedsReconnect === needed) {
+      return;
+    }
+    this.stationNeedsReconnect = needed;
+    this.emitChange();
+  }
+
   getSetupStage(): SetupStage {
     return this.setupStage;
   }
@@ -192,6 +203,7 @@ class AppState extends EventEmitter<AppStateEvents> {
     this.printers = [];
     this.printerStatuses.clear();
     this.unroutableFiscalCount = 0;
+    this.stationNeedsReconnect = false;
     this.emitChange();
   }
 

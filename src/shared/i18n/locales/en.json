@@ -98,7 +98,8 @@
     "title": "Business",
     "subtitle": "Venue linked to this device",
     "linkedReceiving": "Linked and receiving orders",
-    "openDashboard": "Open dashboard →"
+    "openDashboard": "Open dashboard →",
+    "reconnectNeeded": "Not receiving orders from Scanby. Open the Scanby dashboard on this PC to reconnect."
   },
   "history": {
     "title": "Print history",
@@ -204,7 +205,9 @@
     "updateReady": "Update ready",
     "updateReadyBody": "Version {{version}} is ready. Restart to install.",
     "receiptNoFiscalPrinter": "Receipt {{series}} {{aa}} has nowhere to print",
-    "receiptNoFiscalPrinterBody": "No printer is set to print receipts. Assign the role in Scanby print settings and it will print automatically."
+    "receiptNoFiscalPrinterBody": "No printer is set to print receipts. Assign the role in Scanby print settings and it will print automatically.",
+    "stationReconnect": "Scanby Print needs to reconnect",
+    "stationReconnectBody": "Open the Scanby dashboard on this PC to reconnect. Until then orders may not print."
   },
   "tickets": {
     "appName": "Scanby Print Service",

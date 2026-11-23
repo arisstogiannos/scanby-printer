@@ -3,7 +3,9 @@ import { appState } from "@/services/app-state";
 import { getConfig, isPaired } from "@/services/config-store";
 import { isKitchenTicketPrintingEnabled } from "@/services/printer-registry";
 import { isScanbyApiHealthy } from "@/services/scanby-api";
+import { getStationCredentialState } from "@/services/scanby-auth";
 import { getStationName, isStationHeartbeatConfigured } from "@/services/station-heartbeat";
+import { getSupabaseChannelPrivacy } from "@/services/supabase-listener";
 import { getStationId } from "@/services/user-preferences";
 
 export function statusHandler(_req: Request, res: Response): void {
@@ -34,5 +36,9 @@ export function statusHandler(_req: Request, res: Response): void {
     // itself and sweeps for the ones it missed, so a dashboard tab on this PC
     // leaves them to it instead of racing it for the same claims.
     sweepsPrintJobs: isScanbyApiHealthy(),
+    // `missing` or `rejected` has a signed-in dashboard on this PC hand over
+    // a new credential. Never the credential itself.
+    stationCredential: getStationCredentialState(),
+    realtimePrivate: getSupabaseChannelPrivacy(),
   });
 }

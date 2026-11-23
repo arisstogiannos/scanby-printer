@@ -14,6 +14,7 @@ import {
   setReceiptWatermark,
 } from "../src/services/delivered-ledger";
 import { buildTicketLines, renderReceipt } from "../src/services/printer-service";
+import { checkOrderBroadcast, checkReceiptBroadcast } from "../src/shared/broadcast-check";
 import {
   AUTO_PRINT_MAX_AGE_MS,
   PRINT_DEDUPE_MS,
@@ -25,7 +26,19 @@ import { normalizePairPayload } from "../src/shared/pair-payload";
 import { normalizeOrderPrintEvent, normalizePrintOrder } from "../src/shared/print-payload";
 import { normalizePrinterConnectPayload } from "../src/shared/printer-connect-payload";
 import { printerAcceptsDocument, selectPrintTargets } from "../src/shared/printer-routing";
+import {
+  nextRealtimeCheckDelay,
+  parseRealtimeAccess,
+  REALTIME_MODE_POLL_MS,
+  REALTIME_TOKEN_REFRESH_LEAD_MS,
+} from "../src/shared/realtime-access";
 import { normalizePrintReceipt } from "../src/shared/receipt-payload";
+import {
+  chooseScanbyAuth,
+  normalizeStationCredentialPayload,
+  REJECTED_CREDENTIAL_RETRY_MS,
+  stationCredentialState,
+} from "../src/shared/station-credential";
 
 async function testBuildTicketLines(): Promise<void> {
   await initI18n("el");
@@ -595,6 +608,166 @@ function testReceiptDocumentClass(): void {
   assert.equal(legacy?.documentClass, "fiscal_receipt");
 }
 
+const CREDENTIAL =
+  "scanby-station.0f8fad5b-d9cb-469f-a165-70867728950e.abcdefghijklmnopqrstuvwxyz012345";
+
+function testStationCredentialAuth(): void {
+  const now = 1_000_000_000;
+  const secret = " shared-secret ";
+
+  // Its own credential first; the build's secret only as a fallback.
+  assert.deepEqual(chooseScanbyAuth({ credential: CREDENTIAL, rejectedAt: null, secret, now }), {
+    authorization: `Bearer ${CREDENTIAL}`,
+    kind: "station",
+  });
+  assert.deepEqual(chooseScanbyAuth({ credential: undefined, rejectedAt: null, secret, now }), {
+    authorization: "Bearer shared-secret",
+    kind: "secret",
+  });
+  assert.equal(
+    chooseScanbyAuth({ credential: undefined, rejectedAt: null, secret: "", now }),
+    null,
+  );
+
+  // Refused just now: the secret carries on, and the credential is tried again later.
+  const rejectedAt = now - 1_000;
+  assert.equal(
+    chooseScanbyAuth({ credential: CREDENTIAL, rejectedAt, secret, now })?.kind,
+    "secret",
+  );
+  assert.equal(
+    chooseScanbyAuth({
+      credential: CREDENTIAL,
+      rejectedAt,
+      secret,
+      now: rejectedAt + REJECTED_CREDENTIAL_RETRY_MS,
+    })?.kind,
+    "station",
+  );
+  // With no secret behind it, a refused credential is still the only thing to try.
+  assert.equal(
+    chooseScanbyAuth({ credential: CREDENTIAL, rejectedAt, secret: undefined, now })?.kind,
+    "station",
+  );
+
+  assert.equal(stationCredentialState(undefined, null), "missing");
+  assert.equal(stationCredentialState(CREDENTIAL, null), "ok");
+  assert.equal(stationCredentialState(CREDENTIAL, rejectedAt), "rejected");
+}
+
+function testStationCredentialPayloads(): void {
+  assert.deepEqual(
+    normalizeStationCredentialPayload({
+      businessId: "biz-1",
+      stationCredential: CREDENTIAL,
+      privateChannels: true,
+    }),
+    { businessId: "biz-1", stationCredential: CREDENTIAL, privateChannels: true },
+  );
+  assert.equal(
+    normalizeStationCredentialPayload({ businessId: "biz-1", stationCredential: "shared-secret" }),
+    null,
+  );
+  assert.equal(normalizeStationCredentialPayload({ stationCredential: CREDENTIAL }), null);
+
+  const base = {
+    businessId: "biz-1",
+    businessName: "Cafe",
+    supabaseUrl: "https://x.supabase.co",
+    supabasePublishableKey: "sb_publishable_x",
+  };
+  const paired = normalizePairPayload({
+    ...base,
+    stationCredential: CREDENTIAL,
+    privateChannels: false,
+  });
+  assert.equal(paired?.stationCredential, CREDENTIAL);
+  assert.equal(paired?.privateChannels, false);
+  // A malformed credential never fails the pairing; it is just left out.
+  const lenient = normalizePairPayload({ ...base, stationCredential: "not-a-credential" });
+  assert.ok(lenient);
+  assert.equal(lenient?.stationCredential, undefined);
+}
+
+function testRealtimeAccess(): void {
+  assert.deepEqual(parseRealtimeAccess({ privateChannels: false }), { privateChannels: false });
+  const expiresAt = "2026-11-23T13:00:00.000Z";
+  assert.deepEqual(parseRealtimeAccess({ privateChannels: true, token: "jwt", expiresAt }), {
+    privateChannels: true,
+    token: "jwt",
+    expiresAt: Date.parse(expiresAt),
+  });
+  // Private without a usable token is no answer at all.
+  assert.equal(parseRealtimeAccess({ privateChannels: true, error: "unconfigured" }), null);
+  assert.equal(parseRealtimeAccess(null), null);
+
+  const now = Date.parse("2026-11-23T12:00:00.000Z");
+  const token = { privateChannels: true as const, token: "jwt" };
+  assert.equal(nextRealtimeCheckDelay({ privateChannels: false }, now), REALTIME_MODE_POLL_MS);
+  assert.equal(nextRealtimeCheckDelay(null, now), REALTIME_MODE_POLL_MS);
+  assert.equal(
+    nextRealtimeCheckDelay({ ...token, expiresAt: Date.parse(expiresAt) }, now),
+    60 * 60 * 1000 - REALTIME_TOKEN_REFRESH_LEAD_MS,
+  );
+  // An already-expired token is re-asked for soon, never in a tight loop.
+  assert.equal(nextRealtimeCheckDelay({ ...token, expiresAt: now }, now), 30_000);
+}
+
+function testBroadcastChecks(): void {
+  const serverOrder = {
+    id: "order-1",
+    number: 7,
+    table: "12",
+    createdAt: "2026-06-11T10:30:00.000Z",
+    items: [{ quantity: 1, name: "Salad" }],
+  };
+  const live = { order: serverOrder, status: "PENDING" };
+
+  const confirmed = checkOrderBroadcast({ kind: "ok", data: live }, false);
+  assert.equal(confirmed.kind, "confirmed");
+  assert.equal(confirmed.kind === "confirmed" ? confirmed.value.items[0]?.name : null, "Salad");
+
+  // A forged order id: the server has no such order for this venue.
+  assert.deepEqual(checkOrderBroadcast({ kind: "ok", data: { order: null } }, false), {
+    kind: "refuted",
+  });
+  // A forged cancel for an order that is still live.
+  assert.deepEqual(checkOrderBroadcast({ kind: "ok", data: live }, true), { kind: "refuted" });
+  for (const status of ["CANCELLED", "DECLINED"]) {
+    const cancelled = checkOrderBroadcast({ kind: "ok", data: { ...live, status } }, true);
+    assert.equal(cancelled.kind, "confirmed");
+  }
+  // A server that cannot answer (or predates the route) never costs the ticket.
+  assert.deepEqual(checkOrderBroadcast({ kind: "retry" }, false), { kind: "unchecked" });
+  assert.deepEqual(checkOrderBroadcast({ kind: "rejected", status: 404 }, false), {
+    kind: "unchecked",
+  });
+  assert.deepEqual(checkOrderBroadcast({ kind: "unavailable" }, true), { kind: "unchecked" });
+
+  assert.deepEqual(checkReceiptBroadcast({ kind: "ok", data: { receipt: null } }), {
+    kind: "refuted",
+  });
+  assert.deepEqual(checkReceiptBroadcast({ kind: "retry" }), { kind: "unchecked" });
+  const receipt = {
+    id: "r1",
+    businessName: "Cafe",
+    legalName: "Cafe AE",
+    vatId: "123456789",
+    title: "ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ ΠΩΛΗΣΗΣ",
+    series: "A",
+    aa: 1,
+    momentIso: "2026-06-11T10:30:00.000Z",
+    payMethodLabel: "ΜΕΤΡΗΤΑ",
+    totalInCents: 1000,
+    lines: [],
+    vatRows: [],
+    signatures: [],
+  };
+  const signed = checkReceiptBroadcast({ kind: "ok", data: { receipt } });
+  assert.equal(signed.kind, "confirmed");
+  assert.equal(signed.kind === "confirmed" ? signed.value.aa : null, 1);
+}
+
 await testBuildTicketLines();
 testDashboardPairPayload();
 testDashboardPrintPayload();
@@ -610,4 +783,8 @@ testPrinterRouting();
 testReceiptDocumentClass();
 testDeliveredLedger();
 testRetryWindows();
+testStationCredentialAuth();
+testStationCredentialPayloads();
+testRealtimeAccess();
+testBroadcastChecks();
 console.log("Core tests passed");

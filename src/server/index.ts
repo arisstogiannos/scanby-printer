@@ -9,6 +9,7 @@ import { printerConnectHandler } from "@/server/routes/printer-connect";
 import { printerScanHandler } from "@/server/routes/printer-scan";
 import { printerTestHandler } from "@/server/routes/printer-test";
 import { printersHandler } from "@/server/routes/printers";
+import { stationCredentialHandler } from "@/server/routes/station-credential";
 import { statusHandler } from "@/server/routes/status";
 import { unpairHandler } from "@/server/routes/unpair";
 import { LOCAL_SERVER_HOST, LOCAL_SERVER_PORT } from "@/shared/constants";
@@ -40,6 +41,9 @@ export function createLocalServer(): express.Express {
     void printerTestHandler(req, res);
   });
   app.post("/printers", printersHandler);
+  app.post("/station-credential", (req, res) => {
+    void stationCredentialHandler(req, res);
+  });
 
   return app;
 }

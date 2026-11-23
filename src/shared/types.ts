@@ -46,6 +46,17 @@ export type AppConfig = {
   printers?: RegisteredPrinter[];
   /** Mirrors `Business.kitchenTicketsEnabled`; defaults to printing. */
   kitchenTicketsEnabled?: boolean;
+  /**
+   * This station's own credential for `businessId`, issued by a signed-in
+   * dashboard on this PC. Absent on a pairing from before credentials; the
+   * build's shared secret is used until a dashboard hands one over.
+   */
+  stationCredential?: string;
+  /**
+   * Whether the server's order channels were private when it last said so.
+   * Only a fallback for when the token route cannot be asked.
+   */
+  realtimePrivate?: boolean;
 };
 
 export type PairPayload = {
@@ -53,6 +64,9 @@ export type PairPayload = {
   businessName: string;
   supabaseUrl: string;
   supabasePublishableKey: string;
+  /** Sent by dashboards new enough to issue one. */
+  stationCredential?: string;
+  privateChannels?: boolean;
 };
 
 export type PrintFontSize = "default" | "big";
@@ -105,6 +119,12 @@ export type AppStateSnapshot = {
    * the tray warning, so it must never be cleared by anything but a success.
    */
   unroutableFiscalCount: number;
+  /**
+   * The server turned this station's credential down and nothing else gets it
+   * through: printing from the server has stopped until a signed-in dashboard
+   * on this PC hands over a new one. Drives the window's warning.
+   */
+  stationNeedsReconnect: boolean;
   setupComplete: boolean;
   pendingPrinterPicker: string[] | null;
   lastScan: PrinterScanSnapshot | null;

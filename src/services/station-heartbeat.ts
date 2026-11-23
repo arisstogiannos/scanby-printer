@@ -3,9 +3,16 @@ import { app } from "electron";
 import log from "electron-log";
 import { appState } from "@/services/app-state";
 import { getConfig } from "@/services/config-store";
+import {
+  hasScanbyAuth,
+  reportScanbyAuthAccepted,
+  reportScanbyAuthRejected,
+  resolveScanbyAuth,
+} from "@/services/scanby-auth";
 import { isSupabaseSubscribed, onSupabaseSubscriptionChange } from "@/services/supabase-listener";
 import { getStationId } from "@/services/user-preferences";
 import { STATION_HEARTBEAT_DEBOUNCE_MS, STATION_HEARTBEAT_INTERVAL_MS } from "@/shared/constants";
+import type { ScanbyAuth } from "@/shared/station-credential";
 
 const REPORT_TIMEOUT_MS = 5_000;
 const REMOVE_TIMEOUT_MS = 2_000;
@@ -35,9 +42,7 @@ export function getStationName(): string {
  * the two would otherwise overwrite each other's view of the same printers.
  */
 export function isStationHeartbeatConfigured(): boolean {
-  return Boolean(
-    process.env.SCANBY_API_URL && process.env.PRINT_CLAIM_SECRET && getConfig()?.businessId,
-  );
+  return Boolean(process.env.SCANBY_API_URL && hasScanbyAuth() && getConfig()?.businessId);
 }
 
 function stationsUrl(businessId: string): string | null {
@@ -76,9 +81,9 @@ function logFailure(key: string, level: "error" | "warn", message: string, error
 
 async function sendHeartbeat(): Promise<void> {
   const config = getConfig();
-  const secret = process.env.PRINT_CLAIM_SECRET;
+  const auth = resolveScanbyAuth();
   const url = config ? stationsUrl(config.businessId) : null;
-  if (stopped || !url || !secret) {
+  if (stopped || !url || !auth) {
     return;
   }
 
@@ -97,7 +102,7 @@ async function sendHeartbeat(): Promise<void> {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${secret}`,
+        Authorization: auth.authorization,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -115,10 +120,12 @@ async function sendHeartbeat(): Promise<void> {
     });
 
     if (response.status === 401 || response.status === 403) {
+      // The next tick goes out with whatever the server still accepts.
+      reportScanbyAuthRejected(auth.kind);
       logFailure(
-        `http-${response.status}`,
+        `http-${response.status}-${auth.kind}`,
         "error",
-        `station-heartbeat auth failed (${response.status}) — check PRINT_CLAIM_SECRET`,
+        `station-heartbeat auth failed (${response.status}) with the ${auth.kind === "station" ? "station credential" : "shared secret"}`,
       );
       return;
     }
@@ -132,6 +139,7 @@ async function sendHeartbeat(): Promise<void> {
       return;
     }
 
+    reportScanbyAuthAccepted(auth.kind);
     if (lastFailureKey !== null) {
       log.info("station-heartbeat recovered");
       lastFailureKey = null;
@@ -171,7 +179,9 @@ function handleStateChange(): void {
  */
 export function startStationHeartbeat(): void {
   if (!isStationHeartbeatConfigured()) {
-    log.info("Station heartbeat skipped — SCANBY_API_URL, PRINT_CLAIM_SECRET, or pairing not set");
+    log.info(
+      "Station heartbeat skipped — SCANBY_API_URL, a station credential or PRINT_CLAIM_SECRET, or pairing not set",
+    );
     return;
   }
 
@@ -219,12 +229,17 @@ export function stopStationHeartbeat(): void {
  * as a printer that went offline. Best-effort and bounded: the server ages a
  * silent station out on its own, so this must never hold up unpair or quit.
  *
- * Pass the business when it is no longer the paired one (re-pairing elsewhere).
+ * Pass the business, and the bearer captured before the pairing changed, when
+ * it is no longer the paired one (re-pairing elsewhere). `unpair` also has the
+ * server revoke this station's credential for that business; a quit keeps it.
  */
-export async function removeStation(businessId = getConfig()?.businessId): Promise<void> {
-  const secret = process.env.PRINT_CLAIM_SECRET;
+export async function removeStation(
+  options: { businessId?: string; auth?: ScanbyAuth | null; unpair?: boolean } = {},
+): Promise<void> {
+  const businessId = options.businessId ?? getConfig()?.businessId;
+  const auth = options.auth === undefined ? resolveScanbyAuth() : options.auth;
   const url = businessId ? stationsUrl(businessId) : null;
-  if (!url || !secret) {
+  if (!url || !auth) {
     return;
   }
 
@@ -232,10 +247,13 @@ export async function removeStation(businessId = getConfig()?.businessId): Promi
     const response = await fetch(url, {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${secret}`,
+        Authorization: auth.authorization,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ stationId: getStationId() }),
+      body: JSON.stringify({
+        stationId: getStationId(),
+        ...(options.unpair ? { unpair: true } : {}),
+      }),
       signal: AbortSignal.timeout(REMOVE_TIMEOUT_MS),
     });
     if (!response.ok) {

@@ -18,7 +18,8 @@ export async function unpairApp(): Promise<void> {
   // Before the config goes: the DELETE needs the business it is leaving.
   stopStationHeartbeat();
   stopPrintSweeps();
-  await removeStation();
+  // Revokes this station's credential too: nothing left on disk may call the API.
+  await removeStation({ unpair: true });
   await shutdownSupabaseListener();
   printQueue.clear();
   receiptPrintQueue.clear();

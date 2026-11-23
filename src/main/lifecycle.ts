@@ -46,7 +46,14 @@ export async function bootstrapServices(): Promise<void> {
   await syncAutoLaunch(isConfigured());
 
   const config = getConfig();
-  log.info("config", config);
+  // The station credential is a bearer for the venue's print API: never in
+  // main.log, which venues send to support.
+  log.info(
+    "config",
+    config
+      ? { ...config, stationCredential: config.stationCredential ? "<set>" : undefined }
+      : config,
+  );
   log.info("isPaired", isPaired());
   log.info("isConfigured", isConfigured());
   if (isPaired() && config) {

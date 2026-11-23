@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next";
 type BusinessCardProps = {
   businessId: string | null;
   businessName: string;
+  /** The server accepts none of this station's credentials until a dashboard reconnects it. */
+  needsReconnect: boolean;
 };
 
-export function BusinessCard({ businessId, businessName }: BusinessCardProps) {
+export function BusinessCard({ businessId, businessName, needsReconnect }: BusinessCardProps) {
   const { t } = useTranslation();
 
   return (
@@ -19,9 +21,16 @@ export function BusinessCard({ businessId, businessName }: BusinessCardProps) {
         <span className="size-2.5 shrink-0 rounded-full bg-primary" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-base text-zinc-100">{businessName}</p>
-          <p className="mt-0.5 text-xs text-primary">{t("business.linkedReceiving")}</p>
+          {needsReconnect ? null : (
+            <p className="mt-0.5 text-xs text-primary">{t("business.linkedReceiving")}</p>
+          )}
         </div>
       </div>
+      {needsReconnect ? (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300 text-xs">
+          {t("business.reconnectNeeded")}
+        </p>
+      ) : null}
       {businessId ? (
         <button
           type="button"

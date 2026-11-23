@@ -9,6 +9,7 @@ import { startPrintSweeps, stopPrintSweeps } from "@/services/print-sweep";
 import { autoConnectPrinterAfterPair } from "@/services/printer-auto-discovery";
 import { syncPrinterRegistry } from "@/services/printer-registry";
 import { receiptPrintQueue } from "@/services/receipt-print-queue";
+import { resetStationCredentialRejection, resolveScanbyAuth } from "@/services/scanby-auth";
 import { removeStation, startStationHeartbeat } from "@/services/station-heartbeat";
 import { restartSupabaseListener } from "@/services/supabase-listener";
 import { showTrayNotification } from "@/services/tray-notifications";
@@ -25,7 +26,11 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
 
   try {
     const previousBusinessId = getConfig()?.businessId;
+    // Captured before the pairing changes: leaving the old venue below must
+    // speak with the old venue's credential, not the new one's.
+    const previousAuth = resolveScanbyAuth();
     savePairing(payload);
+    resetStationCredentialRejection();
     if (previousBusinessId !== payload.businessId) {
       retainHistoryForBusiness(payload.businessId);
       printQueue.clear();
@@ -36,7 +41,7 @@ export async function pairHandler(req: Request, res: Response): Promise<void> {
       // Moving venues without unlinking first: the old one would otherwise
       // keep this station listed as an offline printer.
       if (previousBusinessId) {
-        void removeStation(previousBusinessId);
+        void removeStation({ businessId: previousBusinessId, auth: previousAuth, unpair: true });
       }
     }
     appState.setPaired(payload.businessName);
